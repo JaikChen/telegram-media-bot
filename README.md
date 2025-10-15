@@ -1,11 +1,3 @@
-好，一悲 ✅  
-我来帮你写一份 **完整的 README.md**，涵盖项目介绍、功能说明、安装部署、命令使用示例等。这样你直接放到项目根目录就能用了。
-
----
-
-## 📂 README.md
-
-```markdown
 # Telegram Media Cleaner Bot
 
 一个基于 Python 的 Telegram Bot，用于自动清理群组/频道媒体说明文字（caption），支持灵活的组合规则、关键词屏蔽、管理员远程管理、数据库备份恢复等功能。
