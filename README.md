@@ -69,7 +69,7 @@ telegram-media-bot/
 
 1. 克隆仓库  
    ```bash
-   git clone <仓库地址> /opt/telegram-media-bot
+   git clone https://github.com/JaikChen/telegram-media-bot.git
    cd /opt/telegram-media-bot
    ```
 
