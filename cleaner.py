@@ -5,11 +5,19 @@ import re
 from db import get_keywords, get_rules
 from config import WHITELIST
 
-# 正则表达式定义
-LINK_REGEX = re.compile(r"(https?://\S+|www\.\S+|t\.me/\S+)", re.IGNORECASE)
-MD_LINK_REGEX = re.compile(r"\[[^\]]+\]\(https?://[^)]+\)", re.IGNORECASE)
-AT_PREFIX_REGEX = re.compile(r"@\w+")
+# =========================
+# 正则表达式定义（增强版）
+# =========================
+# 链接匹配：支持 http/https、www、t.me，允许括号、中文符号
+LINK_REGEX = re.compile(r"(https?://[^\s]+|www\.[^\s]+|t\.me/[^\s]+)", re.IGNORECASE)
+# Markdown 链接 [文字](url)
+MD_LINK_REGEX = re.compile(r"\[[^\]]+\]\((https?://[^\s)]+)\)", re.IGNORECASE)
+# @匹配：支持中文昵称里的 @
+AT_PREFIX_REGEX = re.compile(r"@\S+")
 
+# =========================
+# 工具函数
+# =========================
 def _parse_maxlen(rules: list[str]) -> int | None:
     """解析 maxlen:NN 规则"""
     for r in rules:
@@ -20,6 +28,9 @@ def _parse_maxlen(rules: list[str]) -> int | None:
                 return None
     return None
 
+# =========================
+# 主清理函数
+# =========================
 def clean_caption(text: str | None, chat_id: str) -> str | None:
     """根据频道规则清理说明文字"""
     if not text:
@@ -44,8 +55,12 @@ def clean_caption(text: str | None, chat_id: str) -> str | None:
     if "block_keywords" in rules:
         for kw, is_regex in get_keywords(chat_id):
             if is_regex:
-                if re.search(kw, text, re.IGNORECASE):
-                    return None
+                try:
+                    if re.search(kw, text, re.IGNORECASE):
+                        return None
+                except re.error:
+                    # 正则错误时忽略该关键词
+                    continue
             else:
                 if kw.lower() in text.lower():
                     return None
