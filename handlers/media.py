@@ -18,7 +18,7 @@ async def process_album(context, gid, chat_id):
         return
     msgs = group["messages"]
 
-    # 清理说明
+    # 清理说明（原频道）
     cleaned_caption = clean_caption(msgs[0].caption or None, str(chat_id))
     media = []
     for i, m in enumerate(msgs):
@@ -38,10 +38,18 @@ async def process_album(context, gid, chat_id):
     except Exception as e:
         print(f"[警告] 发送相册失败: {e}")
 
-    # 转发到目标
+    # 转发到目标频道（重新清理说明）
     for tgt in get_forward_targets(str(chat_id)):
+        cleaned_tgt = clean_caption(msgs[0].caption or None, str(tgt))
+        media_tgt = []
+        for i, m in enumerate(msgs):
+            cap = cleaned_tgt if i == 0 else None
+            if m.photo:
+                media_tgt.append(InputMediaPhoto(m.photo[-1].file_id, caption=cap))
+            elif m.video:
+                media_tgt.append(InputMediaVideo(m.video.file_id, caption=cap))
         try:
-            await context.bot.send_media_group(chat_id=tgt, media=media)
+            await context.bot.send_media_group(chat_id=tgt, media=media_tgt)
         except Exception as e:
             print(f"[警告] 向 {tgt} 转发相册失败: {e}")
 
@@ -83,7 +91,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not g["task"]:
             g["task"] = asyncio.create_task(process_album(context, msg.media_group_id, msg.chat_id))
     else:
-        # 单张媒体
+        # 单张媒体（原频道清理）
         cleaned_caption = clean_caption(msg.caption or None, chat_id)
         try:
             await msg.delete()
@@ -95,10 +103,11 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_photo(chat_id=msg.chat_id, photo=msg.photo[-1].file_id, caption=cleaned_caption)
             except Exception as e:
                 print(f"[警告] 发送图片失败: {e}")
-            # 转发
+            # 转发（目标频道重新清理）
             for tgt in get_forward_targets(chat_id):
+                cleaned_tgt = clean_caption(msg.caption or None, tgt)
                 try:
-                    await context.bot.send_photo(chat_id=tgt, photo=msg.photo[-1].file_id, caption=cleaned_caption)
+                    await context.bot.send_photo(chat_id=tgt, photo=msg.photo[-1].file_id, caption=cleaned_tgt)
                 except Exception as e:
                     print(f"[警告] 向 {tgt} 转发图片失败: {e}")
 
@@ -107,9 +116,10 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_video(chat_id=msg.chat_id, video=msg.video.file_id, caption=cleaned_caption)
             except Exception as e:
                 print(f"[警告] 发送视频失败: {e}")
-            # 转发
+            # 转发（目标频道重新清理）
             for tgt in get_forward_targets(chat_id):
+                cleaned_tgt = clean_caption(msg.caption or None, tgt)
                 try:
-                    await context.bot.send_video(chat_id=tgt, video=msg.video.file_id, caption=cleaned_caption)
+                    await context.bot.send_video(chat_id=tgt, video=msg.video.file_id, caption=cleaned_tgt)
                 except Exception as e:
                     print(f"[警告] 向 {tgt} 转发视频失败: {e}")
