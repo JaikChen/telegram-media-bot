@@ -312,45 +312,54 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg or not await is_admin(msg):
         return
     await msg.reply_text("""
-🤖 Bot 管理命令帮助
+🤖 *Bot 管理命令帮助*
 
-【组合规则】
-/setrules -100频道ID 规则1,规则2,...
-/addrule -100频道ID 规则
-/delrule -100频道ID 规则
-/listrules -100频道ID
-/clearrules -100频道ID
+📌 所有命令仅限管理员使用，频道 ID 请使用 `-100` 开头格式。以下命令可直接点击复制使用：
 
-【群组管理】
-/listchats
-/chatinfo -100频道ID
+*🧩 组合规则管理*
+`/setrules -100频道ID 规则1,规则2,...` - 设置频道规则（覆盖原有）
+`/addrule -100频道ID 规则` - 添加单条规则
+`/delrule -100频道ID 规则` - 删除指定规则
+`/listrules -100频道ID` - 查看规则列表
+`/clearrules -100频道ID` - 清空所有规则
 
-【说明预览】
-/preview -100频道ID 说明文字
+📖 *规则示例*：
+- `keep_all`：保留所有说明文字  
+- `strip_all_if_links`：如含链接则整段删除  
+- `clean_links`：清除链接但保留文字  
+- `remove_at_prefix`：删除 @前缀  
+- `block_keywords`：启用关键词屏蔽  
+- `maxlen:50`：说明文字超过 50 字则删除
 
-【关键词管理】
-/addkw -100频道ID 关键词 [regex]
-/listkw -100频道ID
-/delkw -100频道ID 关键词
+*🔑 关键词管理*
+`/addkw -100频道ID 关键词 [regex]` - 添加关键词（支持正则）
+`/delkw -100频道ID 关键词` - 删除关键词
+`/listkw -100频道ID` - 查看关键词列表
 
-【锁定/解锁】
-/lock -100频道ID
-/unlock -100频道ID
+*🔒 清理控制*
+`/lock -100频道ID` - 锁定频道，暂停清理
+`/unlock -100频道ID` - 解锁频道，恢复清理
 
-【统计】
-/stats
+*📊 清理统计*
+`/stats` - 查看各频道清理次数
 
-【管理员管理】
-/addadmin 用户ID
-/deladmin 用户ID
-/listadmins
+*👑 管理员管理*
+`/addadmin 用户ID` - 添加动态管理员
+`/deladmin 用户ID` - 移除动态管理员
+`/listadmins` - 查看所有管理员（固定+动态）
 
-【转发映射】
-/addforward -100源频道ID -100目标频道ID
-/delforward -100源频道ID -100目标频道ID
-/listforward -100源频道ID
+*🔁 转发映射*
+`/addforward -100源频道ID -100目标频道ID` - 添加转发映射
+`/delforward -100源频道ID -100目标频道ID` - 删除转发映射
+`/listforward -100源频道ID` - 查看转发目标列表
+*🧹 说明预览*
+`/preview -100频道ID 说明文字` - 模拟清理说明，查看结果
 
-【数据库】
-/backupdb
-/restoredb
-""".strip())
+*🧭 群组管理*
+`/listchats` - 查看 Bot 所在频道/群组列表
+`/chatinfo -100频道ID` - 查看频道信息（名称+规则）
+
+*💾 数据库操作*
+`/backupdb` - 备份数据库文件
+`/restoredb` - 恢复数据库（需回复数据库文件）
+""".strip(), parse_mode="Markdown")
