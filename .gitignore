@@ -2,3 +2,4 @@
 /.idea
 bot.db
 update-bot.sh
+update-local.sh
