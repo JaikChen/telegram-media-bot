@@ -23,7 +23,11 @@ else
     echo "🔄 拉取最新代码..."
     cd $BOT_DIR
     sudo git reset --hard
-    sudo git pull
+    # 使用合并方式拉取，避免 fast-forward 错误
+    sudo git pull --no-rebase || {
+        echo "❌ Git 拉取失败，可能存在冲突，请手动解决后重新运行脚本。"
+        exit 1
+    }
 fi
 
 # 进入目录并更新依赖
