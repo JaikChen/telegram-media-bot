@@ -1,3 +1,4 @@
 .env
 /.idea
 bot.db
+update-bot.sh
