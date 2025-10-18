@@ -1,3 +1,4 @@
+#media.py
 import asyncio
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ContextTypes
@@ -41,7 +42,8 @@ async def safe_send_video(bot, chat_id, file_id, caption):
     return False
 
 async def process_album(context, gid, chat_id):
-    await asyncio.sleep(6)
+    await asyncio.sleep(2.5)
+
     group = album_cache.pop(gid, None)
     if not group:
         return
@@ -64,16 +66,6 @@ async def process_album(context, gid, chat_id):
         print(f"[警告] 发送相册失败: {e}")
 
     for tgt in get_forward_targets(str(chat_id)):
-        # ✅ 全局去重：目标频道是否已接收任意媒体
-        skip = False
-        for m in msgs:
-            fid = m.video.file_unique_id if m.video else m.photo[-1].file_unique_id if m.photo else None
-            if fid and has_forward_seen(tgt, fid):
-                skip = True
-                break
-        if skip:
-            continue
-
         cleaned_tgt = clean_caption(msgs[0].caption or None, str(tgt))
         media_tgt = []
         for i, m in enumerate(msgs):
@@ -82,13 +74,21 @@ async def process_album(context, gid, chat_id):
                 media_tgt.append(InputMediaPhoto(m.photo[-1].file_id, caption=cap))
             elif m.video:
                 media_tgt.append(InputMediaVideo(m.video.file_id, caption=cap))
-        success = await safe_send_media_group(context.bot, tgt, media_tgt)
-        if success:
-            mark_album_forwarded(chat_id, gid, tgt)
-            for m in msgs:
+        try:
+            sent_msgs = await context.bot.send_media_group(chat_id=tgt, media=media_tgt)
+            for m in sent_msgs:
                 fid = m.video.file_unique_id if m.video else m.photo[-1].file_unique_id if m.photo else None
-                if fid:
-                    add_forward_seen(tgt, fid)
+                if fid and has_forward_seen(tgt, fid):
+                    try:
+                        await m.delete()
+                        print(f"[去重] 删除目标频道 {tgt} 的重复媒体")
+                    except Exception as e:
+                        print(f"[警告] 删除目标频道重复媒体失败: {e}")
+                else:
+                    if fid:
+                        add_forward_seen(tgt, fid)
+        except Exception as e:
+            print(f"[警告] 向目标频道 {tgt} 转发相册失败: {e}")
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.channel_post
@@ -111,10 +111,9 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     inc_stat(chat_id)
 
     if msg.media_group_id:
-        g = album_cache.setdefault(msg.media_group_id, {"messages": [], "task": None})
+        g = album_cache.setdefault(msg.media_group_id, {"messages": []})
         g["messages"].append(msg)
-        if not g["task"]:
-            g["task"] = asyncio.create_task(process_album(context, msg.media_group_id, msg.chat_id))
+        await process_album(context, msg.media_group_id, msg.chat_id)
     else:
         cleaned_caption = clean_caption(msg.caption or None, chat_id)
         try:
@@ -125,19 +124,29 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if msg.photo:
             await context.bot.send_photo(chat_id=msg.chat_id, photo=msg.photo[-1].file_id, caption=cleaned_caption)
             for tgt in get_forward_targets(chat_id):
-                if has_forward_seen(tgt, fid):
-                    continue
                 cleaned_tgt = clean_caption(msg.caption or None, tgt)
-                success = await safe_send_photo(context.bot, tgt, msg.photo[-1].file_id, cleaned_tgt)
-                if success:
-                    add_forward_seen(tgt, fid)
+                sent = await context.bot.send_photo(chat_id=tgt, photo=msg.photo[-1].file_id, caption=cleaned_tgt)
+                fid_tgt = msg.photo[-1].file_unique_id
+                if has_forward_seen(tgt, fid_tgt):
+                    try:
+                        await sent.delete()
+                        print(f"[去重] 删除目标频道 {tgt} 的重复图片")
+                    except Exception as e:
+                        print(f"[警告] 删除目标频道重复图片失败: {e}")
+                else:
+                    add_forward_seen(tgt, fid_tgt)
 
         elif msg.video:
             await context.bot.send_video(chat_id=msg.chat_id, video=msg.video.file_id, caption=cleaned_caption)
             for tgt in get_forward_targets(chat_id):
-                if has_forward_seen(tgt, fid):
-                    continue
                 cleaned_tgt = clean_caption(msg.caption or None, tgt)
-                success = await safe_send_video(context.bot, tgt, msg.video.file_id, cleaned_tgt)
-                if success:
-                    add_forward_seen(tgt, fid)
+                sent = await context.bot.send_video(chat_id=tgt, video=msg.video.file_id, caption=cleaned_tgt)
+                fid_tgt = msg.video.file_unique_id
+                if has_forward_seen(tgt, fid_tgt):
+                    try:
+                        await sent.delete()
+                        print(f"[去重] 删除目标频道 {tgt} 的重复视频")
+                    except Exception as e:
+                        print(f"[警告] 删除目标频道重复视频失败: {e}")
+                else:
+                    add_forward_seen(tgt, fid_tgt)
