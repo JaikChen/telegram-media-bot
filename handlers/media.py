@@ -42,7 +42,7 @@ async def safe_send_video(bot, chat_id, file_id, caption):
     return False
 
 async def process_album(context, gid, chat_id):
-    await asyncio.sleep(2.5)
+    await asyncio.sleep(6)
 
     group = album_cache.pop(gid, None)
     if not group:
