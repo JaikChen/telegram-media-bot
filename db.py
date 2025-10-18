@@ -50,12 +50,22 @@ def init_db():
         )
     """)
 
-    # ✅ 新增：转发去重记录（目标频道已接收的媒体）
+    # ✅ 目标频道已接收的媒体（统一去重）
     c.execute("""
         CREATE TABLE IF NOT EXISTS forward_seen (
             chat_id TEXT,
             file_unique_id TEXT,
             PRIMARY KEY (chat_id, file_unique_id)
+        )
+    """)
+
+    # ✅ 媒体组转发记录（避免重复组转发）
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS album_forwarded (
+            source_chat_id TEXT,
+            media_group_id TEXT,
+            target_chat_id TEXT,
+            PRIMARY KEY (source_chat_id, media_group_id, target_chat_id)
         )
     """)
 
@@ -66,7 +76,6 @@ def init_db():
 # 已处理媒体（频道内去重）
 # =========================
 def add_seen(chat_id: str, fid: str):
-    """记录某频道已处理的媒体唯一 ID"""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
@@ -77,7 +86,6 @@ def add_seen(chat_id: str, fid: str):
     conn.close()
 
 def has_seen(chat_id: str, fid: str) -> bool:
-    """检查某频道是否已处理该媒体"""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT 1 FROM seen WHERE chat_id=? AND file_unique_id=?", (chat_id, fid))
@@ -86,10 +94,9 @@ def has_seen(chat_id: str, fid: str) -> bool:
     return r is not None
 
 # =========================
-# 转发去重记录（目标频道）
+# 目标频道已接收媒体（统一去重）
 # =========================
 def add_forward_seen(chat_id: str, fid: str):
-    """记录某目标频道已接收的媒体"""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
@@ -100,13 +107,39 @@ def add_forward_seen(chat_id: str, fid: str):
     conn.close()
 
 def has_forward_seen(chat_id: str, fid: str) -> bool:
-    """检查目标频道是否已接收该媒体"""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT 1 FROM forward_seen WHERE chat_id=? AND file_unique_id=?", (chat_id, fid))
     r = c.fetchone()
     conn.close()
     return r is not None
+
+# =========================
+# 媒体组转发记录（避免重复组转发）
+# =========================
+def has_album_forwarded(source_chat_id: str, media_group_id: str, target_chat_id: str) -> bool:
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("""
+        SELECT 1 FROM album_forwarded
+        WHERE source_chat_id=? AND media_group_id=? AND target_chat_id=?
+    """, (source_chat_id, media_group_id, target_chat_id))
+    r = c.fetchone()
+    conn.close()
+    return r is not None
+
+def mark_album_forwarded(source_chat_id: str, media_group_id: str, target_chat_id: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    try:
+        c.execute("""
+            INSERT INTO album_forwarded (source_chat_id, media_group_id, target_chat_id)
+            VALUES (?, ?, ?)
+        """, (source_chat_id, media_group_id, target_chat_id))
+    except sqlite3.IntegrityError:
+        pass
+    conn.commit()
+    conn.close()
 
 # =========================
 # 清理规则管理
@@ -197,7 +230,6 @@ def is_locked(chat_id: str) -> bool:
 # 清理统计
 # =========================
 def inc_stat(chat_id: str):
-    """增加频道清理次数（自动累加）"""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute(
@@ -209,7 +241,6 @@ def inc_stat(chat_id: str):
     conn.close()
 
 def get_stats():
-    """获取所有频道清理统计"""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT chat_id, count FROM stats ORDER BY count DESC")
@@ -234,6 +265,9 @@ def delete_admin(user_id: str):
     conn.commit()
     conn.close()
 
+# =========================
+# 管理员管理（续）
+# =========================
 def list_admins():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -243,31 +277,19 @@ def list_admins():
     return [r[0] for r in rows]
 
 # =========================
-# 群组/频道信息
-# =========================
-def save_chat(chat_id: str, title: str):
-    """保存频道名称"""
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO chats (chat_id, title) VALUES (?, ?)", (chat_id, title))
-    conn.commit()
-    conn.close()
-
-# =========================
 # 转发映射管理
 # =========================
 def add_forward(source_chat_id: str, target_chat_id: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute(
-        "INSERT OR IGNORE INTO forward_map (source_chat_id, target_chat_id) VALUES (?, ?)",
-        (source_chat_id, target_chat_id)
-    )
+    try:
+        c.execute("INSERT INTO forward_map (source_chat_id, target_chat_id) VALUES (?, ?)", (source_chat_id, target_chat_id))
+    except sqlite3.IntegrityError:
+        pass
     conn.commit()
     conn.close()
 
 def del_forward(source_chat_id: str, target_chat_id: str):
-    """删除转发映射关系"""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("DELETE FROM forward_map WHERE source_chat_id=? AND target_chat_id=?", (source_chat_id, target_chat_id))
@@ -275,7 +297,6 @@ def del_forward(source_chat_id: str, target_chat_id: str):
     conn.close()
 
 def list_forward(source_chat_id: str):
-    """列出某源频道的所有转发目标"""
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT target_chat_id FROM forward_map WHERE source_chat_id=?", (source_chat_id,))
@@ -284,5 +305,14 @@ def list_forward(source_chat_id: str):
     return [r[0] for r in rows]
 
 def get_forward_targets(source_chat_id: str):
-    """获取某频道的转发目标列表（别名）"""
     return list_forward(source_chat_id)
+
+# =========================
+# 群组信息记录
+# =========================
+def save_chat(chat_id: str, title: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO chats (chat_id, title) VALUES (?, ?)", (chat_id, title))
+    conn.commit()
+    conn.close()

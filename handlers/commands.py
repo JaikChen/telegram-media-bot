@@ -272,6 +272,7 @@ async def handle_listforward(update: Update, context: ContextTypes.DEFAULT_TYPE)
     else:
         await msg.reply_text("❌ 用法错误：/listforward -100源频道ID")
 
+
 # =========================
 # 数据库备份与恢复
 # =========================
@@ -305,7 +306,7 @@ async def handle_restoredb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text("✅ 数据库已恢复")
 
 # =========================
-# 帮助（续）
+# 帮助
 # =========================
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message

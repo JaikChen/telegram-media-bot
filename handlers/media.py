@@ -3,7 +3,8 @@ from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ContextTypes
 from db import (
     has_seen, add_seen, save_chat, is_locked, inc_stat,
-    get_forward_targets, has_forward_seen, add_forward_seen
+    get_forward_targets, has_forward_seen, add_forward_seen,
+    has_album_forwarded, mark_album_forwarded
 )
 from cleaner import clean_caption
 
@@ -62,13 +63,17 @@ async def process_album(context, gid, chat_id):
     except Exception as e:
         print(f"[警告] 发送相册失败: {e}")
 
-    fid = msgs[0].video.file_unique_id if msgs[0].video else msgs[0].photo[-1].file_unique_id if msgs[0].photo else None
-    if not fid:
-        return
-
     for tgt in get_forward_targets(str(chat_id)):
-        if has_forward_seen(tgt, fid):
+        # ✅ 全局去重：目标频道是否已接收任意媒体
+        skip = False
+        for m in msgs:
+            fid = m.video.file_unique_id if m.video else m.photo[-1].file_unique_id if m.photo else None
+            if fid and has_forward_seen(tgt, fid):
+                skip = True
+                break
+        if skip:
             continue
+
         cleaned_tgt = clean_caption(msgs[0].caption or None, str(tgt))
         media_tgt = []
         for i, m in enumerate(msgs):
@@ -79,7 +84,11 @@ async def process_album(context, gid, chat_id):
                 media_tgt.append(InputMediaVideo(m.video.file_id, caption=cap))
         success = await safe_send_media_group(context.bot, tgt, media_tgt)
         if success:
-            add_forward_seen(tgt, fid)
+            mark_album_forwarded(chat_id, gid, tgt)
+            for m in msgs:
+                fid = m.video.file_unique_id if m.video else m.photo[-1].file_unique_id if m.photo else None
+                if fid:
+                    add_forward_seen(tgt, fid)
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.channel_post
