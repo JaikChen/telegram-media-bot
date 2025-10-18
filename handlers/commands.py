@@ -313,7 +313,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg or not await is_admin(msg):
         return
     await msg.reply_text("""
-🤖 *Bot 管理命令帮助*
+🤖 *Jaikcl_Bot 管理命令帮助*
 
 📌 所有命令仅限管理员使用，频道 ID 请使用 `-100` 开头格式。以下命令可直接点击复制使用：
 
