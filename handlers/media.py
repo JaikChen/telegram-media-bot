@@ -94,59 +94,64 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message or update.channel_post
     if not msg:
         return
+
     chat_id = str(msg.chat_id)
     if is_locked(chat_id):
         return
+
     save_chat(chat_id, msg.chat.title or "")
     fid = msg.video.file_unique_id if msg.video else msg.photo[-1].file_unique_id if msg.photo else None
     if not fid:
         return
+
     if has_seen(chat_id, fid):
-        try:
-            await msg.delete()
-        except Exception as e:
-            print(f"[警告] 删除消息失败: {e}")
-        return
+        return  # 不删除重复消息，只跳过处理
     add_seen(chat_id, fid)
     inc_stat(chat_id)
 
+    cleaned_caption = clean_caption(msg.caption or "", chat_id)
+
+    # 修改原消息说明（如果清理后仍有内容且不同）
+    if cleaned_caption and cleaned_caption != (msg.caption or "").strip():
+        try:
+            await context.bot.edit_message_caption(
+                chat_id=msg.chat_id,
+                message_id=msg.message_id,
+                caption=cleaned_caption
+            )
+        except Exception as e:
+            print(f"[警告] 修改说明失败: {e}")
+
+    # 相册处理缓存（保留结构，不重发）
     if msg.media_group_id:
         g = album_cache.setdefault(msg.media_group_id, {"messages": []})
         g["messages"].append(msg)
-        await process_album(context, msg.media_group_id, msg.chat_id)
-    else:
-        cleaned_caption = clean_caption(msg.caption or None, chat_id)
-        try:
-            await msg.delete()
-        except Exception as e:
-            print(f"[警告] 删除消息失败: {e}")
+        return  # 不再重发相册，保留原始结构
 
-        if msg.photo:
-            await context.bot.send_photo(chat_id=msg.chat_id, photo=msg.photo[-1].file_id, caption=cleaned_caption)
-            for tgt in get_forward_targets(chat_id):
-                cleaned_tgt = clean_caption(msg.caption or None, tgt)
+    # 转发到目标频道（保持原逻辑）
+    for tgt in get_forward_targets(chat_id):
+        cleaned_tgt = clean_caption(msg.caption or "", tgt)
+        if not cleaned_tgt:
+            continue
+
+        try:
+            if msg.photo:
                 sent = await context.bot.send_photo(chat_id=tgt, photo=msg.photo[-1].file_id, caption=cleaned_tgt)
                 fid_tgt = msg.photo[-1].file_unique_id
-                if has_forward_seen(tgt, fid_tgt):
-                    try:
-                        await sent.delete()
-                        print(f"[去重] 删除目标频道 {tgt} 的重复图片")
-                    except Exception as e:
-                        print(f"[警告] 删除目标频道重复图片失败: {e}")
-                else:
-                    add_forward_seen(tgt, fid_tgt)
-
-        elif msg.video:
-            await context.bot.send_video(chat_id=msg.chat_id, video=msg.video.file_id, caption=cleaned_caption)
-            for tgt in get_forward_targets(chat_id):
-                cleaned_tgt = clean_caption(msg.caption or None, tgt)
+            elif msg.video:
                 sent = await context.bot.send_video(chat_id=tgt, video=msg.video.file_id, caption=cleaned_tgt)
                 fid_tgt = msg.video.file_unique_id
-                if has_forward_seen(tgt, fid_tgt):
-                    try:
-                        await sent.delete()
-                        print(f"[去重] 删除目标频道 {tgt} 的重复视频")
-                    except Exception as e:
-                        print(f"[警告] 删除目标频道重复视频失败: {e}")
-                else:
-                    add_forward_seen(tgt, fid_tgt)
+            else:
+                continue
+
+            if has_forward_seen(tgt, fid_tgt):
+                try:
+                    await sent.delete()
+                    print(f"[去重] 删除目标频道 {tgt} 的重复媒体")
+                except Exception as e:
+                    print(f"[警告] 删除目标频道重复媒体失败: {e}")
+            else:
+                add_forward_seen(tgt, fid_tgt)
+
+        except Exception as e:
+            print(f"[警告] 向目标频道 {tgt} 转发失败: {e}")
