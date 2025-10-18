@@ -1,7 +1,7 @@
 # Telegram 媒体说明清理机器人
 
-一款基于 Python & SQLite 的 Telegram 群组/频道媒体说明文字清理机器人，支持自定义规则、关键词屏蔽、相册合并与去重，提供私聊命令全方位管理和统计，同时附带一键部署脚本及自动化更新方案。
-
+一款基于 Python & SQLite 的 Telegram 群组/频道媒体说明文字清理机器人，支持自定义规则、关键词屏蔽、相册合并与去重，提供私聊命令全方位管理和统计，同时附带一键部署脚本和~~自动化更新方案~~一键更新脚本。仅需使用telegram bot Token。
+~~其实是没有申请下来API，之前有API的账号爆掉了~~
 ---
 
 ## 目录
@@ -12,7 +12,7 @@
 4. [快速开始](#快速开始)  
 5. [本地调试](#本地调试)  
 6. [部署](#部署)  
-7. [自动化更新](#自动化更新)  
+7. [一键更新](#一键更新)  
 8. [私聊命令](#私聊命令)  
 9. [常见问题](#常见问题)  
 10. [贡献与许可](#贡献与许可)  
@@ -28,7 +28,7 @@
 -   **轻量存储**：SQLite 单文件数据库，自动建表  
 -   **后台守护**：支持 systemd 后台运行与开机自启  
 -   **一键部署**：自带 `deploy_bot.sh` 脚本，简化环境准备  
--   **自动化更新**：提供 GitHub Actions 与 Cron 两种方案  
+-   **一键更新**：提供  `update-local.sh`脚本，简化拉库更新
 
 ---
 
@@ -66,7 +66,7 @@ telegram-media-bot/
 ---
 
 ## 快速开始
-
+（如果你想自己搭建）
 1. 克隆仓库  
    ```bash
    git clone https://github.com/JaikChen/telegram-media-bot.git
@@ -74,6 +74,7 @@ telegram-media-bot/
    ```
 
 2. 配置环境变量  
+（也可以在项目文件夹里放置一个.env文件）
    ```bash
    echo "BOT_TOKEN=你的TelegramBotToken" > .env
    ```
@@ -226,63 +227,13 @@ echo "✅ 部署完成！日志: journalctl -u telegram-media-bot -f"
 
 ---
 
-## 自动化更新
+## 一键更新
 
-### GitHub Actions
-
-1. 在仓库 **Settings → Secrets** 添加：  
-   - `SERVER_HOST`  
-   - `SERVER_USER`  
-   - `SERVER_KEY`  
-
-2. 新建 `.github/workflows/deploy.yml`：
-
-   ```yaml
-   name: Deploy to Server
-   on:
-     push:
-       branches: [ main ]
-
-   jobs:
-     deploy:
-       runs-on: ubuntu-latest
-
-       steps:
-         - uses: actions/checkout@v3
-
-         - name: Sync to Server
-           uses: appleboy/scp-action@v0.1.7
-           with:
-             host: ${{ secrets.SERVER_HOST }}
-             username: ${{ secrets.SERVER_USER }}
-             key: ${{ secrets.SERVER_KEY }}
-             source: "."
-             target: "/opt/telegram-media-bot"
-
-         - name: Restart Bot
-           uses: appleboy/ssh-action@v0.1.10
-           with:
-             host: ${{ secrets.SERVER_HOST }}
-             username: ${{ secrets.SERVER_USER }}
-             key: ${{ secrets.SERVER_KEY }}
-             script: |
-               cd /opt/telegram-media-bot
-               source .venv/bin/activate
-               pip install --upgrade pip
-               pip install -r requirements.txt
-               sudo systemctl restart telegram-media-bot
-   ```
-
-### 定时任务（Cron）
-
+### 一键拉取GitHub仓库并重新启动
+把仓库里的update-local.sh丢到上一级文件夹然后授权运行。
 ```bash
-crontab -e
-```
-
-添加，每 5 分钟自动更新并重启：
-
-```bash
-*/5 * * * * cd /opt/telegram-media-bot && git pull && source .venv/bin/activate && pip install -r requirements.txt && sudo systemctl restart telegram-media-bot
+chmod +x deploy_bot.sh
+sudo ./deploy_bot.sh
 ```
 
 ---

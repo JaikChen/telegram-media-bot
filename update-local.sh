@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # 一键更新 Telegram Media Bot 脚本
-# 作者：一悲
+# 作者：jaik
 
 set -e
 
