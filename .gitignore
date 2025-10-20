@@ -6,3 +6,5 @@ update-bot.sh
 update-local.sh
 清除仓库历史.sh
 
+/handlers/__pycache__
+/__pycache__

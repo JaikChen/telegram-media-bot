@@ -82,5 +82,4 @@ def clean_caption(text: str | None, chat_id: str) -> str | None:
     # 清理多余空格和换行
     text = "\n".join(line.strip() for line in text.splitlines())
     text = re.sub(r"\s{2,}", " ", text).strip()
-
     return text or None
