@@ -22,7 +22,8 @@ from handlers.chat_mgmt import (
     handle_setfooter, handle_delfooter,
     handle_lock, handle_unlock,
     handle_addforward, handle_delforward, handle_listforward,
-    handle_allowuser, handle_blockuser, handle_listallowed
+    handle_allowuser, handle_blockuser, handle_listallowed,
+    handle_setquiet  # 静音/清理模式
 )
 from handlers.info import (
     handle_listchats, handle_chatinfo, handle_stats, handle_help
@@ -44,7 +45,7 @@ def main():
     # 注册命令处理器
     # =========================
 
-    # --- 系统管理 ---
+    # --- 系统管理 (仅固定管理员) ---
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/addadmin(\s|$)"), handle_addadmin))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/deladmin(\s|$)"), handle_deladmin))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/listadmins(\s|$)"), handle_listadmins))
@@ -84,6 +85,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/allowuser(\s|$)"), handle_allowuser))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/blockuser(\s|$)"), handle_blockuser))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/listallowed(\s|$)"), handle_listallowed))
+    # 静音/清理模式
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/setquiet(\s|$)"), handle_setquiet))
     # 预览
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/preview(\s|$)"), handle_preview))
 
