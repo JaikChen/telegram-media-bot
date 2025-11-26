@@ -3,9 +3,6 @@
 
 # 🤖 Telegram Media Bot (全能版)
 
-[](https://www.python.org/)
-[](https://core.telegram.org/bots/api)
-[](https://www.google.com/search?q=LICENSE)
 
 一款功能强大的 Telegram 群组/频道媒体管理机器人。专为净化社群环境、自动化转发和媒体管理而设计。支持自定义规则清理、媒体去重、自动转发、互动投票等高级功能。
 
