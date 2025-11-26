@@ -1,5 +1,7 @@
+# db.py
 import sqlite3
 from config import DB_FILE
+
 
 # =========================
 # 初始化数据库结构
@@ -8,7 +10,7 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
-    # 已处理媒体记录（用于频道内去重）
+    # 原有表结构
     c.execute("""
         CREATE TABLE IF NOT EXISTS seen (
             chat_id TEXT,
@@ -16,11 +18,7 @@ def init_db():
             PRIMARY KEY (chat_id, file_unique_id)
         )
     """)
-
-    # 频道/群组信息（记录名称）
     c.execute("CREATE TABLE IF NOT EXISTS chats (chat_id TEXT PRIMARY KEY, title TEXT)")
-
-    # 关键词屏蔽规则
     c.execute("""
         CREATE TABLE IF NOT EXISTS keywords (
             chat_id TEXT,
@@ -28,20 +26,10 @@ def init_db():
             is_regex INTEGER DEFAULT 0
         )
     """)
-
-    # 锁定状态（暂停清理）
     c.execute("CREATE TABLE IF NOT EXISTS locked (chat_id TEXT PRIMARY KEY)")
-
-    # 清理统计（记录次数）
     c.execute("CREATE TABLE IF NOT EXISTS stats (chat_id TEXT PRIMARY KEY, count INTEGER)")
-
-    # 组合规则（说明清理规则）
     c.execute("CREATE TABLE IF NOT EXISTS rules (chat_id TEXT, rule TEXT)")
-
-    # 动态管理员列表
     c.execute("CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY)")
-
-    # 转发映射关系（源频道 → 目标频道）
     c.execute("""
         CREATE TABLE IF NOT EXISTS forward_map (
             source_chat_id TEXT,
@@ -49,8 +37,6 @@ def init_db():
             PRIMARY KEY (source_chat_id, target_chat_id)
         )
     """)
-
-    # ✅ 目标频道已接收的媒体（统一去重）
     c.execute("""
         CREATE TABLE IF NOT EXISTS forward_seen (
             chat_id TEXT,
@@ -58,8 +44,6 @@ def init_db():
             PRIMARY KEY (chat_id, file_unique_id)
         )
     """)
-
-    # ✅ 媒体组转发记录（避免重复组转发）
     c.execute("""
         CREATE TABLE IF NOT EXISTS album_forwarded (
             source_chat_id TEXT,
@@ -69,11 +53,25 @@ def init_db():
         )
     """)
 
+    # [新增] 新功能表
+    c.execute("CREATE TABLE IF NOT EXISTS footers (chat_id TEXT PRIMARY KEY, text TEXT)")
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS replacements (
+            chat_id TEXT,
+            old_word TEXT,
+            new_word TEXT
+        )
+    """)
+
+    # [新增] 全局配置表（用于存储日志频道ID等）
+    c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
+
     conn.commit()
     conn.close()
 
+
 # =========================
-# 已处理媒体（频道内去重）
+# 媒体去重与记录
 # =========================
 def add_seen(chat_id: str, fid: str):
     conn = sqlite3.connect(DB_FILE)
@@ -85,6 +83,7 @@ def add_seen(chat_id: str, fid: str):
     conn.commit()
     conn.close()
 
+
 def has_seen(chat_id: str, fid: str) -> bool:
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -93,9 +92,7 @@ def has_seen(chat_id: str, fid: str) -> bool:
     conn.close()
     return r is not None
 
-# =========================
-# 目标频道已接收媒体（统一去重）
-# =========================
+
 def add_forward_seen(chat_id: str, fid: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -106,6 +103,7 @@ def add_forward_seen(chat_id: str, fid: str):
     conn.commit()
     conn.close()
 
+
 def has_forward_seen(chat_id: str, fid: str) -> bool:
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -114,9 +112,7 @@ def has_forward_seen(chat_id: str, fid: str) -> bool:
     conn.close()
     return r is not None
 
-# =========================
-# 媒体组转发记录（避免重复组转发）
-# =========================
+
 def has_album_forwarded(source_chat_id: str, media_group_id: str, target_chat_id: str) -> bool:
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -127,6 +123,7 @@ def has_album_forwarded(source_chat_id: str, media_group_id: str, target_chat_id
     r = c.fetchone()
     conn.close()
     return r is not None
+
 
 def mark_album_forwarded(source_chat_id: str, media_group_id: str, target_chat_id: str):
     conn = sqlite3.connect(DB_FILE)
@@ -141,8 +138,9 @@ def mark_album_forwarded(source_chat_id: str, media_group_id: str, target_chat_i
     conn.commit()
     conn.close()
 
+
 # =========================
-# 清理规则管理
+# 规则管理
 # =========================
 def add_rule(chat_id: str, rule: str):
     conn = sqlite3.connect(DB_FILE)
@@ -151,12 +149,14 @@ def add_rule(chat_id: str, rule: str):
     conn.commit()
     conn.close()
 
+
 def delete_rule(chat_id: str, rule: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("DELETE FROM rules WHERE chat_id=? AND rule=?", (chat_id, rule))
     conn.commit()
     conn.close()
+
 
 def clear_rules(chat_id: str):
     conn = sqlite3.connect(DB_FILE)
@@ -165,6 +165,7 @@ def clear_rules(chat_id: str):
     conn.commit()
     conn.close()
 
+
 def get_rules(chat_id: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -172,6 +173,7 @@ def get_rules(chat_id: str):
     rows = c.fetchall()
     conn.close()
     return [r[0] for r in rows]
+
 
 # =========================
 # 关键词管理
@@ -186,12 +188,14 @@ def add_keyword(chat_id: str, word: str, is_regex: bool = False):
     conn.commit()
     conn.close()
 
+
 def delete_keyword(chat_id: str, word: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("DELETE FROM keywords WHERE chat_id=? AND word=?", (chat_id, word))
     conn.commit()
     conn.close()
+
 
 def get_keywords(chat_id: str):
     conn = sqlite3.connect(DB_FILE)
@@ -201,8 +205,9 @@ def get_keywords(chat_id: str):
     conn.close()
     return [(w, bool(r)) for w, r in rows]
 
+
 # =========================
-# 锁定频道（暂停清理）
+# 锁定与统计
 # =========================
 def lock_chat(chat_id: str):
     conn = sqlite3.connect(DB_FILE)
@@ -211,12 +216,14 @@ def lock_chat(chat_id: str):
     conn.commit()
     conn.close()
 
+
 def unlock_chat(chat_id: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("DELETE FROM locked WHERE chat_id=?", (chat_id,))
     conn.commit()
     conn.close()
+
 
 def is_locked(chat_id: str) -> bool:
     conn = sqlite3.connect(DB_FILE)
@@ -226,9 +233,7 @@ def is_locked(chat_id: str) -> bool:
     conn.close()
     return r is not None
 
-# =========================
-# 清理统计
-# =========================
+
 def inc_stat(chat_id: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -240,6 +245,7 @@ def inc_stat(chat_id: str):
     conn.commit()
     conn.close()
 
+
 def get_stats():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -247,6 +253,7 @@ def get_stats():
     rows = c.fetchall()
     conn.close()
     return rows
+
 
 # =========================
 # 管理员管理
@@ -258,6 +265,7 @@ def add_admin(user_id: str):
     conn.commit()
     conn.close()
 
+
 def delete_admin(user_id: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -265,9 +273,7 @@ def delete_admin(user_id: str):
     conn.commit()
     conn.close()
 
-# =========================
-# 管理员管理（续）
-# =========================
+
 def list_admins():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -276,18 +282,21 @@ def list_admins():
     conn.close()
     return [r[0] for r in rows]
 
+
 # =========================
-# 转发映射管理
+# 转发映射
 # =========================
 def add_forward(source_chat_id: str, target_chat_id: str):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO forward_map (source_chat_id, target_chat_id) VALUES (?, ?)", (source_chat_id, target_chat_id))
+        c.execute("INSERT INTO forward_map (source_chat_id, target_chat_id) VALUES (?, ?)",
+                  (source_chat_id, target_chat_id))
     except sqlite3.IntegrityError:
         pass
     conn.commit()
     conn.close()
+
 
 def del_forward(source_chat_id: str, target_chat_id: str):
     conn = sqlite3.connect(DB_FILE)
@@ -295,6 +304,7 @@ def del_forward(source_chat_id: str, target_chat_id: str):
     c.execute("DELETE FROM forward_map WHERE source_chat_id=? AND target_chat_id=?", (source_chat_id, target_chat_id))
     conn.commit()
     conn.close()
+
 
 def list_forward(source_chat_id: str):
     conn = sqlite3.connect(DB_FILE)
@@ -304,11 +314,13 @@ def list_forward(source_chat_id: str):
     conn.close()
     return [r[0] for r in rows]
 
+
 def get_forward_targets(source_chat_id: str):
     return list_forward(source_chat_id)
 
+
 # =========================
-# 群组信息记录
+# 基础信息
 # =========================
 def save_chat(chat_id: str, title: str):
     conn = sqlite3.connect(DB_FILE)
@@ -316,3 +328,101 @@ def save_chat(chat_id: str, title: str):
     c.execute("INSERT OR REPLACE INTO chats (chat_id, title) VALUES (?, ?)", (chat_id, title))
     conn.commit()
     conn.close()
+
+
+# =========================
+# [新增] 页脚管理
+# =========================
+def set_footer(chat_id: str, text: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO footers (chat_id, text) VALUES (?, ?)", (chat_id, text))
+    conn.commit()
+    conn.close()
+
+
+def get_footer(chat_id: str) -> str | None:
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT text FROM footers WHERE chat_id=?", (chat_id,))
+    r = c.fetchone()
+    conn.close()
+    return r[0] if r else None
+
+
+def delete_footer(chat_id: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM footers WHERE chat_id=?", (chat_id,))
+    conn.commit()
+    conn.close()
+
+
+# =========================
+# [新增] 替换词管理
+# =========================
+def add_replacement(chat_id: str, old: str, new: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT INTO replacements (chat_id, old_word, new_word) VALUES (?, ?, ?)", (chat_id, old, new))
+    conn.commit()
+    conn.close()
+
+
+def delete_replacement(chat_id: str, old: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM replacements WHERE chat_id=? AND old_word=?", (chat_id, old))
+    conn.commit()
+    conn.close()
+
+
+def get_replacements(chat_id: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT old_word, new_word FROM replacements WHERE chat_id=?", (chat_id,))
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+# =========================
+# [新增] 彻底删除群组数据
+# =========================
+def delete_chat_data(chat_id: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    # 删除所有关联表中的记录
+    c.execute("DELETE FROM chats WHERE chat_id=?", (chat_id,))
+    c.execute("DELETE FROM rules WHERE chat_id=?", (chat_id,))
+    c.execute("DELETE FROM keywords WHERE chat_id=?", (chat_id,))
+    c.execute("DELETE FROM locked WHERE chat_id=?", (chat_id,))
+    c.execute("DELETE FROM stats WHERE chat_id=?", (chat_id,))
+    c.execute("DELETE FROM footers WHERE chat_id=?", (chat_id,))
+    c.execute("DELETE FROM replacements WHERE chat_id=?", (chat_id,))
+    c.execute("DELETE FROM seen WHERE chat_id=?", (chat_id,))
+    c.execute("DELETE FROM forward_seen WHERE chat_id=?", (chat_id,))
+    c.execute("DELETE FROM forward_map WHERE source_chat_id=? OR target_chat_id=?", (chat_id, chat_id))
+    c.execute("DELETE FROM album_forwarded WHERE source_chat_id=? OR target_chat_id=?", (chat_id, chat_id))
+    conn.commit()
+    conn.close()
+
+
+# =========================
+# [新增] 全局配置 (日志频道)
+# =========================
+def set_log_channel(chat_id: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('log_channel', ?)", (chat_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_log_channel() -> str | None:
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT value FROM settings WHERE key='log_channel'")
+    r = c.fetchone()
+    conn.close()
+    return r[0] if r else None
