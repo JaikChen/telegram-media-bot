@@ -1,385 +1,335 @@
-# Telegram 媒体说明清理机器人
 
-一款基于 Python & SQLite 的 Telegram 群组/频道媒体说明文字清理机器人，支持自定义规则、关键词屏蔽、相册合并与去重，提供私聊命令全方位管理和统计，同时附带一键部署脚本和~~自动化更新方案~~一键更新脚本。仅需使用telegram bot Token。
-~~其实是没有申请下来API，之前有API的账号爆掉了~~
----
 
-## 目录
 
-1. [特性](#特性)  
-2. [环境与依赖](#环境与依赖)  
-3. [项目结构](#项目结构)  
-4. [快速开始](#快速开始)  
-5. [本地调试](#本地调试)  
-6. [部署](#部署)  
-7. [一键更新](#一键更新)  
-8. [私聊命令](#私聊命令)  
-9. [常见问题](#常见问题)  
-10. [贡献与许可](#贡献与许可)  
+# 🤖 Telegram Media Bot (全能版)
 
----
+[](https://www.python.org/)
+[](https://core.telegram.org/bots/api)
+[](https://www.google.com/search?q=LICENSE)
 
-## 特性
+一款功能强大的 Telegram 群组/频道媒体管理机器人。专为净化社群环境、自动化转发和媒体管理而设计。支持自定义规则清理、媒体去重、自动转发、互动投票等高级功能。
 
--   **自动清理**：照片/视频说明文字，支持链接、`@` 前缀、关键词屏蔽、长度限制等  
--   **相册合并**：延迟处理，保留第一条清理后的说明  
--   **去重机制**：防止重复转发同一媒体  
--   **私聊管理**：规则、关键词、锁定/解锁、统计、数据库备份/恢复  
--   **轻量存储**：SQLite 单文件数据库，自动建表  
--   **后台守护**：支持 systemd 后台运行与开机自启  
--   **一键部署**：自带 `deploy_bot.sh` 脚本，简化环境准备  
--   **一键更新**：提供  `update-local.sh`脚本，简化拉库更新
+-----
 
----
+## ✨ 核心特性
 
-## 环境与依赖
+### 🛡️ 内容净化与管理
 
--   **操作系统**：Linux（CentOS/RHEL、Ubuntu/Debian 均可）  
--   **Python**：3.9 及以上（推荐 3.11）  
--   **SQLite**：内置，无需额外安装  
--   **必装工具**：`git`, `sudo`  
--   **Python 包**：见 `requirements.txt`  
-    ```txt
-    python-telegram-bot==20.7
-    python-dotenv
+  * **智能清理**：自动去除照片/视频说明中的广告、链接、@引用等。
+  * **规则灵活**：支持正则匹配、关键词屏蔽、长度限制、替换词等多种策略。
+  * **白名单机制**：允许特定用户（如赞助者）发送带链接的媒体而不被清理。
+  * **自定义页脚**：在清理后的媒体说明中自动追加自定义的小尾巴（如频道推广链接）。
+
+### 🚀 自动化与转发
+
+  * **自动转发**：支持多对多的转发映射（源频道 -\> 目标频道），转发时自动应用清理规则。
+  * **智能去重**：
+      * 基于媒体指纹（`file_unique_id`）识别重复内容。
+      * **滚动清理**：自动保留最近 1 年的去重记录，过期数据自动清理，防止数据库无限膨胀。
+  * **相册支持**：完美支持 Media Group（相册），转发时保留首条说明并自动去重。
+
+### 🎮 互动与控制
+
+  * **互动投票**：转发单张图片/视频时，自动附加 👍 / 👎 投票按钮。
+  * **静音模式**：支持 `quiet`（完全静音）和 `autodel`（阅后即焚）模式，避免 Bot 回复刷屏。
+  * **权限隔离**：
+      * **Super Admin**：拥有所有权限（系统维护、数据库管理）。
+      * **Chat Admin**：仅能管理其所在的频道/群组。
+
+### 🛠️ 系统维护
+
+  * **日志频道**：将清理记录、错误报警实时推送到指定频道。
+  * **数据库维护**：支持一键备份/恢复，每日凌晨 4:00 自动清理过期数据并整理碎片。
+  * **无效群组清理**：自动检测并移除 Bot 被踢出的群组数据。
+
+-----
+
+## 🛠 环境与依赖
+
+  * **操作系统**: Linux (推荐 Ubuntu/Debian/CentOS)
+  * **Python**: 3.11 或更高版本
+  * **数据库**: SQLite (零配置，自动生成 `bot.db`)
+
+-----
+
+## 🚀 快速部署
+
+### 方法一：一键脚本部署 (推荐)
+
+我们提供了一个全自动部署脚本，会自动配置虚拟环境、安装依赖并注册 systemd 服务。
+
+1.  **克隆仓库**
+
+    ```bash
+    git clone https://github.com/你的用户名/telegram-media-bot.git
+    cd telegram-media-bot
     ```
 
----
+2.  **配置环境变量**
+    创建 `.env` 文件并填入你的 Bot Token 和管理员 ID：
 
-## 项目结构
+    ```bash
+    echo "BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" > .env
+    # 多个管理员ID用逗号分隔
+    echo "ADMIN_IDS=123456789,987654321" >> .env
+    ```
+
+3.  **运行部署脚本**
+
+    ```bash
+    chmod +x deploy_bot.sh
+    sudo ./deploy_bot.sh
+    ```
+
+    *脚本会自动创建 Python 虚拟环境、安装依赖、创建 systemd 服务并启动 Bot。*
+
+4.  **查看日志**
+
+    ```bash
+    sudo journalctl -u telegram-media-bot -f
+    ```
+
+### 方法二：手动运行
+
+1.  **安装依赖**
+
+    ```bash
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+    ```
+
+2.  **启动 Bot**
+
+    ```bash
+    python main.py
+    ```
+
+-----
+
+## 📖 使用指南
+
+> 💡 **提示**：
+>
+>   * 大部分命令需要在 Bot **所在的群组/频道**中使用，或者在**私聊**中指定 `-100频道ID`。
+>   * 建议在私聊中操作，以保护隐私。
+
+### 1\. 身份与权限
+
+| 角色 | 描述 | 权限范围 |
+| :--- | :--- | :--- |
+| **Super Admin** | 在 `.env` 中配置的 `ADMIN_IDS` | **全权掌控**。可管理所有频道、系统设置、数据库维护。 |
+| **Chat Admin** | 所在群组/频道的管理员 | **仅限当前频道**。可修改规则、关键词、页脚等配置。 |
+
+-----
+
+### 2\. 基础规则配置 (Rules)
+
+控制 Bot 如何处理媒体说明文字。
+
+  * **设置规则** (覆盖式)：
+    ```bash
+    /setrules -100123456789 clean_links,remove_at_prefix
+    ```
+  * **添加/删除单条规则**：
+    ```bash
+    /addrule -100123456789 block_keywords
+    /delrule -100123456789 maxlen:50
+    ```
+  * **查看/清空规则**：
+    ```bash
+    /listrules -100123456789
+    /clearrules -100123456789
+    ```
+
+#### 📝 可用规则参数表
+
+| 规则代码 | 功能描述 |
+| :--- | :--- |
+| `keep_all` | **保留所有**。跳过清理（但替换词和页脚仍生效）。 |
+| `strip_all_if_links` | **严格模式**。如果说明中包含任何链接（含文字链），直接删除整段说明。 |
+| `clean_links` | **温和模式**。仅删除说明中的 URL 文本，保留其他文字。 |
+| `remove_at_prefix` | **去引用**。删除所有 `@username` 格式的文本。 |
+| `block_keywords` | **关键词屏蔽**。需配合 `/addkw` 使用。命中关键词则删除整段说明。 |
+| `maxlen:50` | **长度限制**。超过 50 个字符则删除整段说明。 |
+
+-----
+
+### 3\. 内容增强 (Content)
+
+让你的频道内容更规范、更丰富。
+
+#### 🔑 关键词屏蔽
+
+  * **添加屏蔽词** (支持正则)：
+    ```bash
+    /addkw -100xxx 赌博
+    /addkw -100xxx \d{11} regex  # 屏蔽手机号正则
+    ```
+  * **管理屏蔽词**：
+    ```bash
+    /listkw -100xxx
+    /delkw -100xxx 赌博
+    ```
+
+#### 🔄 关键词替换
+
+自动将文案中的 A 替换为 B（例如将搬运来源替换为自己的频道）。
+
+  * **添加替换**：
+    ```bash
+    /addreplace -100xxx 原频道 @MyChannel
+    ```
+
+#### 📝 自定义页脚
+
+在清理后的说明文字末尾，自动追加一段文字。
+
+  * **设置页脚**：
+    ```bash
+    /setfooter -100xxx 📢 关注我们：@MyChannel
+    ```
+
+#### 🛡 用户白名单
+
+允许特定用户（如赞助者、管理员小号）发送带链接/广告的媒体而不被 Bot 清理。
+
+  * **添加白名单**：
+    ```bash
+    /allowuser -100xxx 123456789
+    ```
+
+-----
+
+### 4\. 🎮 控制与模式 (Control)
+
+优化 Bot 的交互体验。
+
+#### 🔕 静音与阅后即焚模式
+
+防止 Bot 的回复刷屏。
+
+```bash
+/setquiet -100xxx autodel
+```
+
+  * `off`: **正常** (默认)，Bot 对每个操作都回复 "✅ 已..."。
+  * `quiet`: **静音**，操作成功时不说话，仅报错时回复。
+  * `autodel`: **阅后即焚**，Bot 回复成功消息，但 **10秒后自动删除** 该消息。
+
+#### 👍 互动投票开关
+
+开启后，Bot 转发单张图片/视频时，会自动在下方附加 👍 / 👎 按钮。
+
+```bash
+/setvoting -100xxx on
+```
+
+#### 🔒 锁定与解锁
+
+暂停 Bot 对该频道的清理工作（如维护期间）。
+
+```bash
+/lock -100xxx
+/unlock -100xxx
+```
+
+-----
+
+### 5\. 🔁 自动转发 (Forward)
+
+建立频道间的自动搬运机制。
+
+  * **添加转发关系**：
+
+    ```bash
+    /addforward -100源频道ID -100目标频道ID
+    ```
+
+    *当源频道发布媒体时，Bot 会自动清理并转发到目标频道。*
+
+  * **查看/删除转发**：
+
+    ```bash
+    /listforward -100源频道ID
+    /delforward -100源频道ID -100目标频道ID
+    ```
+
+-----
+
+### 6\. ⚙️ 系统管理 (Super Admin)
+
+> ⚠️ **仅限固定管理员使用**
+
+  * **📝 日志频道**：设置一个频道用于接收 Bot 的运行日志（去重记录、错误报警）。
+    ```bash
+    /setlog -100日志频道ID
+    ```
+  * **🧹 清理无效群组**：清理数据库中 Bot 被踢出或已解散的群组数据。
+    ```bash
+    /cleanchats
+    ```
+  * **💾 数据库维护**：
+      * `/backupdb`: 获取 `bot.db` 文件备份。
+      * `/restoredb`: 回复此命令并附带数据库文件进行恢复。
+      * `/cleandb`: 手动触发数据库清理（删除 1 年前的去重记录）并执行 VACUUM 整理。
+  * **👑 管理员管理**：
+      * `/addadmin 123456`: 添加动态管理员。
+      * `/listadmins`: 查看所有管理员列表。
+
+-----
+
+## 📊 数据库自动维护策略
+
+Bot 内置了智能的数据库维护机制，无需人工干预：
+
+1.  **去重记录 (TTL)**：
+      * Bot 默认保留 **1 年 (365天)** 的媒体去重指纹。
+      * 超过 1 年的记录会被自动删除，允许老图重发。
+2.  **每日维护任务**：
+      * 每天 **UTC 04:00** 自动运行。
+      * 执行内容：清理过期数据 + `VACUUM` (释放磁盘空间)。
+
+-----
+
+## 📁 项目结构
 
 ```plaintext
 telegram-media-bot/
-├── handlers/
-│   ├── commands.py      # 私聊命令处理
-│   └── media.py         # 群组/频道媒体处理
-├── cleaner.py           # 说明文字清理逻辑
-├── config.py            # 环境与常量配置
-├── db.py                # SQLite 数据库操作
-├── main.py              # Bot 启动与路由注册
-├── requirements.txt     # 依赖清单
-├── .env                 # 环境变量文件（BOT_TOKEN）
-├── bot.db               # SQLite 数据库文件（首次运行生成）
-└── deploy_bot.sh        # 一键部署脚本
+├── main.py               # 程序主入口，负责启动和调度
+├── db.py                 # 数据库核心逻辑 (SQLite封装)
+├── cleaner.py            # 文本清理核心算法 (正则/替换)
+├── config.py             # 配置文件读取
+├── handlers/             # 功能模块文件夹
+│   ├── utils.py          # 通用工具与权限检查
+│   ├── sys_admin.py      # 系统级管理命令
+│   ├── chat_mgmt.py      # 群组级配置命令
+│   ├── info.py           # 信息查询与帮助
+│   ├── media.py          # 媒体消息处理与转发逻辑
+│   └── callback.py       # 按钮回调处理 (投票)
+├── requirements.txt      # Python 依赖清单
+├── deploy_bot.sh         # 一键部署脚本
+└── update-local.sh       # 更新脚本
 ```
 
----
+-----
 
-## 快速开始
-（如果你想自己搭建）
-1. 克隆仓库  
-   ```bash
-   git clone https://github.com/JaikChen/telegram-media-bot.git
-   cd /opt/telegram-media-bot
-   ```
+## ❓ 常见问题 (FAQ)
 
-2. 配置环境变量  
-（也可以在项目文件夹里放置一个.env文件）
-   ```bash
-   echo "BOT_TOKEN=你的TelegramBotToken" > .env
-   ```
-   ```.env
-    BOT_TOKEN=
-    ADMIN_IDS=
-   ```
-固定管理员用户 ID 集合（仅这些用户可使用私聊命令）
-同时还支持数据库动态管理员（见 db.py）
+**Q: Bot 没有反应怎么办？**
+A: 1. 检查 Bot 是否是群组管理员。2. 检查 `.env` 中 Token 是否正确。3. 查看日志 `journalctl -u telegram-media-bot -f`。
 
-3. 赋予脚本执行权限并运行  
-   ```bash
-   chmod +x deploy_bot.sh
-   sudo ./deploy_bot.sh
-   ```
+**Q: 如何获取频道 ID？**
+A: 将 Bot 拉入频道，随便发一条消息，转发给 `@userinfobot` 或查看 Bot 后台日志。频道 ID 通常以 `-100` 开头。
 
-4. 查看运行日志  
-   ```bash
-   journalctl -u telegram-media-bot -f
-   ```
+**Q: 为什么相册没有投票按钮？**
+A: Telegram API 限制，发送 Media Group (相册) 时无法附加 Inline Keyboard 按钮。投票功能仅对单张图片/视频生效。
 
----
+**Q: 日志报错 `Can't parse entities`？**
+A: 这是 Markdown 格式错误。请确保使用了最新版的代码（已修复 Markdown 解析问题），重启 Bot 即可。
 
-## 本地调试
+-----
 
-1. 创建并激活虚拟环境  
-   ```bash
-   python3.11 -m venv .venv
-   source .venv/bin/activate
-   ```
+## 📜 许可证
 
-2. 安装依赖  
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-3. 启动 Bot  
-   ```bash
-   python main.py
-   ```
-   首次启动会自动创建 `bot.db` 并初始化表结构，控制台显示日志。
-
----
-
-## 部署
-
-### 一键部署脚本
-
-根目录的 `deploy_bot.sh` 会自动：
-
-1. 进入项目目录  
-2. 删除并重建 `.venv`  
-3. 安装依赖  
-4. 校验 `.env`  
-5. 生成 systemd 服务文件  
-6. 启用并启动服务  
-
-赋权并运行：
-
-```bash
-chmod +x deploy_bot.sh
-sudo ./deploy_bot.sh
-```
-
-脚本内容（纯 LF 格式）：
-
-```bash
-#!/bin/bash
-set -e
-
-APP_DIR="/opt/telegram-media-bot"
-VENV_DIR="$APP_DIR/.venv"
-SERVICE_FILE="/etc/systemd/system/telegram-media-bot.service"
-
-echo "🚀 部署开始..."
-
-cd $APP_DIR
-
-# 重建虚拟环境
-[[ -d $VENV_DIR ]] && rm -rf $VENV_DIR
-python3.11 -m venv $VENV_DIR
-source $VENV_DIR/bin/activate
-
-# 安装依赖
-pip install --upgrade pip
-pip install python-telegram-bot==20.7 python-dotenv
-
-# 检查 .env
-[[ ! -f .env ]] && echo "⚠️ .env 缺失" && exit 1
-
-# 写入 systemd 服务
-sudo tee $SERVICE_FILE > /dev/null <<EOF
-[Unit]
-Description=Telegram Media Bot
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=$APP_DIR
-ExecStart=$VENV_DIR/bin/python $APP_DIR/main.py
-EnvironmentFile=$APP_DIR/.env
-Restart=always
-RestartSec=5
-User=root
-Group=root
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-# 启动服务
-sudo systemctl daemon-reload
-sudo systemctl enable telegram-media-bot
-sudo systemctl restart telegram-media-bot
-
-echo "✅ 部署完成！日志: journalctl -u telegram-media-bot -f"
-```
-
----
-
-### 手动部署
-
-1. 编辑 systemd 服务：  
-   `/etc/systemd/system/telegram-media-bot.service`
-   ```ini
-   [Unit]
-   Description=Telegram Media Bot
-   After=network.target
-
-   [Service]
-   Type=simple
-   WorkingDirectory=/opt/telegram-media-bot
-   ExecStart=/opt/telegram-media-bot/.venv/bin/python /opt/telegram-media-bot/main.py
-   EnvironmentFile=/opt/telegram-media-bot/.env
-   Restart=always
-   RestartSec=5
-   User=root
-   Group=root
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-2. 启动服务：
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable telegram-media-bot
-   sudo systemctl start telegram-media-bot
-   ```
-
-3. 查看日志：
-   ```bash
-   sudo journalctl -u telegram-media-bot -f
-   ```
-
----
-
-## 一键更新
-
-### 一键拉取GitHub仓库并重新启动
-把仓库里的update-local.sh丢到上一级文件夹然后授权运行。
-```bash
-chmod +x deploy_bot.sh
-sudo ./deploy_bot.sh
-```
-
----
-
-## 私聊命令
-
-> **仅限管理员（固化 + 动态）使用**
-
-### 1. 规则管理
-
-- **/setrules `<频道ID> 规则1,规则2,...`**  
-  覆盖式设置所有清理规则  
-  示例：  
-  ```
-  /setrules -100123456789 clean_links,remove_at_prefix,block_keywords,maxlen:80
-  ```
-
-- **/addrule `<频道ID> 规则`**  
-  在现有规则末尾追加  
-  示例：  
-  ```
-  /addrule -100123456789 maxlen:100
-  ```
-
-- **/delrule `<频道ID> 规则`**  
-  删除指定规则  
-  示例：  
-  ```
-  /delrule -100123456789 clean_links
-  ```
-
-- **/listrules `<频道ID>`**  
-  列出所有规则  
-  示例：  
-  ```
-  /listrules -100123456789
-  ```
-
-- **/clearrules `<频道ID>`**  
-  清空所有规则  
-  示例：  
-  ```
-  /clearrules -100123456789
-  ```
-
-> **可用规则**：  
-> `clean_links`、`strip_all_if_links`、`remove_at_prefix`、`block_keywords`、`keep_all`、`maxlen:<N>`
-
----
-
-### 2. 关键词管理
-
-- **/addkw `<频道ID> 关键词 [regex]`**  
-  添加关键词，可选正则模式  
-  示例：  
-  ```
-  /addkw -100123456789 广告
-  /addkw -100123456789 \d{11} regex
-  ```
-
-- **/listkw `<频道ID>`**  
-  列出所有关键词  
-  示例：  
-  ```
-  /listkw -100123456789
-  ```
-
-- **/delkw `<频道ID> 关键词`**  
-  删除指定关键词  
-  示例：  
-  ```
-  /delkw -100123456789 广告
-  ```
-
-- **/exportkw `<频道ID>`**  
-  导出关键词为文本文件  
-  示例：  
-  ```
-  /exportkw -100123456789
-  ```
-
-- **/importkw `<频道ID> 词1,词2,...`** 或回复文件后执行  
-  批量导入关键词  
-  示例：  
-  ```
-  /importkw -100123456789 广告,推广,微信
-  ```
-
----
-
-### 3. 锁定 / 解锁
-
-- **/lock `<频道ID>`**：暂停该频道所有清理  
-- **/unlock `<频道ID>`**：恢复清理  
-
-示例：  
-```
-/lock -100123456789
-/unlock -100123456789
-```
-
----
-
-### 4. 查询与统计
-
-- **/listchats**：列出 Bot 当前所在所有频道和群组  
-- **/chatinfo `<频道ID>`**：查看频道名称与当前规则  
-- **/preview `<频道ID> 文本>`**：预览文本按规则处理后的结果  
-- **/stats**：查看各频道已清理媒体总次数  
-- **/help**：显示帮助菜单  
-
----
-
-### 5. 管理员 & 数据库
-
-- **/addadmin `<用户ID>`**：添加动态管理员  
-- **/deladmin `<用户ID>`**：删除动态管理员  
-- **/listadmins**：列出固化 + 动态管理员  
-- **/backupdb**：导出 SQLite 数据库  
-- **/restoredb**（回复文件后执行）：恢复数据库  
-
----
-
-## 常见问题
-
-- **No module named 'telegram'**  
-  激活 `.venv` 并执行：  
-  ```bash
-  pip install python-telegram-bot==20.7
-  ```
-
-- **无法安装 20.x 版本**  
-  确认 `python3 --version` ≥ 3.9。
-
-- **SQLite 锁表或性能问题**  
-  可考虑使用 `aiosqlite` 或迁移到 MySQL/PostgreSQL。
-
----
-
-## 贡献与许可
-
-欢迎提出 Issue 与 Pull Request，共同完善功能。  
-本项目遵循 MIT 许可证，详见 [LICENSE](LICENSE)。
+本项目采用 [MIT License](https://www.google.com/search?q=LICENSE) 开源。欢迎 Fork 和提交 PR！
