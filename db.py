@@ -331,7 +331,7 @@ def save_chat(chat_id: str, title: str):
 
 
 # =========================
-# [新增] 页脚管理
+#  页脚管理
 # =========================
 def set_footer(chat_id: str, text: str):
     conn = sqlite3.connect(DB_FILE)
@@ -359,7 +359,7 @@ def delete_footer(chat_id: str):
 
 
 # =========================
-# [新增] 替换词管理
+# 替换词管理
 # =========================
 def add_replacement(chat_id: str, old: str, new: str):
     conn = sqlite3.connect(DB_FILE)
@@ -387,7 +387,7 @@ def get_replacements(chat_id: str):
 
 
 # =========================
-# [新增] 彻底删除群组数据
+# 彻底删除群组数据
 # =========================
 def delete_chat_data(chat_id: str):
     conn = sqlite3.connect(DB_FILE)
@@ -409,7 +409,7 @@ def delete_chat_data(chat_id: str):
 
 
 # =========================
-# [新增] 全局配置 (日志频道)
+# 全局配置 (日志频道)
 # =========================
 def set_log_channel(chat_id: str):
     conn = sqlite3.connect(DB_FILE)
@@ -426,3 +426,35 @@ def get_log_channel() -> str | None:
     r = c.fetchone()
     conn.close()
     return r[0] if r else None
+
+# 用户白名单管理
+# =========================
+def add_user_whitelist(chat_id: str, user_id: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO user_whitelist (chat_id, user_id) VALUES (?, ?)", (chat_id, user_id))
+    conn.commit()
+    conn.close()
+
+def del_user_whitelist(chat_id: str, user_id: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM user_whitelist WHERE chat_id=? AND user_id=?", (chat_id, user_id))
+    conn.commit()
+    conn.close()
+
+def get_chat_whitelist(chat_id: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT user_id FROM user_whitelist WHERE chat_id=?", (chat_id,))
+    rows = c.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+def is_user_whitelisted(chat_id: str, user_id: str) -> bool:
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM user_whitelist WHERE chat_id=? AND user_id=?", (chat_id, user_id))
+    r = c.fetchone()
+    conn.close()
+    return r is not None
