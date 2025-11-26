@@ -5,35 +5,37 @@ from telegram.ext import ContextTypes
 from db import (
     has_seen, add_seen, save_chat, is_locked, inc_stat,
     get_forward_targets, has_forward_seen, add_forward_seen,
-    has_album_forwarded, mark_album_forwarded, get_log_channel
+    has_album_forwarded, mark_album_forwarded, get_log_channel,
+    is_voting_enabled  # [新增]
 )
 from cleaner import clean_caption
+from handlers.callback import get_vote_markup  # [新增]
 
 album_cache = {}
 
 
-# [新增] 日志发送辅助函数
 async def log_event(bot, text: str):
     log_channel = get_log_channel()
     if log_channel:
         try:
             await bot.send_message(chat_id=log_channel, text=text)
         except Exception:
-            pass  # 避免死循环或影响主流程
+            pass
 
 
 async def process_album(context, gid, chat_id):
-    await asyncio.sleep(6)  # 等待媒体组完整到达
+    await asyncio.sleep(6)
 
     group = album_cache.pop(gid, None)
     if not group:
         return
 
     msgs = group["messages"]
-    # 尝试获取频道名称，用于日志
     chat_title = msgs[0].chat.title or str(chat_id)
 
-    cleaned_caption = clean_caption(msgs[0].caption or "", str(chat_id))
+    user_id = msgs[0].from_user.id if msgs[0].from_user else None
+    cleaned_caption = clean_caption(msgs[0].caption or "", str(chat_id), user_id)
+
     media = []
 
     for i, m in enumerate(msgs):
@@ -48,22 +50,22 @@ async def process_album(context, gid, chat_id):
         except Exception as e:
             print(f"[警告] 删除原始相册消息失败: {e}")
 
-    # 记录清理操作
     if cleaned_caption != (msgs[0].caption or ""):
         await log_event(context.bot,
                         f"♻️ [相册清理] 频道 `{chat_title}` ({chat_id})\n已清理 {len(msgs)} 条媒体的说明文字。")
 
     try:
+        # 相册不支持直接带按钮，故暂不添加 reply_markup
         await context.bot.send_media_group(chat_id=chat_id, media=media)
     except Exception as e:
         err_msg = f"⚠️ [警告] 重发相册失败: {e}\n频道: {chat_title} ({chat_id})"
         print(err_msg)
         await log_event(context.bot, err_msg)
 
-    # 转发逻辑
     for tgt in get_forward_targets(str(chat_id)):
         if has_album_forwarded(str(chat_id), gid, str(tgt)):
             continue
+
         cleaned_tgt = clean_caption(msgs[0].caption or "", str(tgt))
         media_tgt = []
         for i, m in enumerate(msgs):
@@ -107,7 +109,6 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not fid:
         return
 
-    # 去重逻辑
     if has_seen(chat_id, fid):
         try:
             await msg.delete()
@@ -118,36 +119,43 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     add_seen(chat_id, fid)
     inc_stat(chat_id)
 
-    # 相册处理
     if msg.media_group_id:
         g = album_cache.setdefault(msg.media_group_id, {"messages": []})
         g["messages"].append(msg)
         asyncio.create_task(process_album(context, msg.media_group_id, msg.chat_id))
         return
 
-    # 清理说明
     original_caption = msg.caption or ""
-    cleaned_caption = clean_caption(original_caption, chat_id)
+    user_id = msg.from_user.id if msg.from_user else None
+    cleaned_caption = clean_caption(original_caption, chat_id, user_id)
 
-    # 删除原始消息
     try:
         await msg.delete()
     except Exception as e:
         print(f"[警告] 删除原始消息失败: {e}")
         await log_event(context.bot, f"⚠️ [权限不足] 无法删除原始消息\n频道: {chat_title}")
 
-    # 重发到原频道
+    # [修改] 检查是否开启投票
+    reply_markup = get_vote_markup(0, 0) if is_voting_enabled(chat_id) else None
+
     try:
         if msg.photo:
-            sent = await context.bot.send_photo(chat_id=chat_id, photo=msg.photo[-1].file_id,
-                                                caption=cleaned_caption or None)
+            sent = await context.bot.send_photo(
+                chat_id=chat_id,
+                photo=msg.photo[-1].file_id,
+                caption=cleaned_caption or None,
+                reply_markup=reply_markup  # 附加按钮
+            )
         elif msg.video:
-            sent = await context.bot.send_video(chat_id=chat_id, video=msg.video.file_id,
-                                                caption=cleaned_caption or None)
+            sent = await context.bot.send_video(
+                chat_id=chat_id,
+                video=msg.video.file_id,
+                caption=cleaned_caption or None,
+                reply_markup=reply_markup  # 附加按钮
+            )
         else:
             return
 
-        # 如果说明文字有变化，记录日志
         if cleaned_caption != original_caption:
             await log_event(context.bot, f"♻️ [清理] 频道 `{chat_title}` ({chat_id})\n已处理媒体说明。")
 
@@ -157,18 +165,28 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await log_event(context.bot, err_msg)
         return
 
-    # 转发到目标频道
     for tgt in get_forward_targets(chat_id):
         cleaned_tgt = clean_caption(msg.caption or "", tgt)
 
+        # [修改] 目标频道也检查是否开启投票
+        tgt_markup = get_vote_markup(0, 0) if is_voting_enabled(tgt) else None
+
         try:
             if msg.photo:
-                sent_tgt = await context.bot.send_photo(chat_id=tgt, photo=msg.photo[-1].file_id,
-                                                        caption=cleaned_tgt or None)
+                sent_tgt = await context.bot.send_photo(
+                    chat_id=tgt,
+                    photo=msg.photo[-1].file_id,
+                    caption=cleaned_tgt or None,
+                    reply_markup=tgt_markup
+                )
                 fid_tgt = sent_tgt.photo[-1].file_unique_id if sent_tgt.photo else None
             elif msg.video:
-                sent_tgt = await context.bot.send_video(chat_id=tgt, video=msg.video.file_id,
-                                                        caption=cleaned_tgt or None)
+                sent_tgt = await context.bot.send_video(
+                    chat_id=tgt,
+                    video=msg.video.file_id,
+                    caption=cleaned_tgt or None,
+                    reply_markup=tgt_markup
+                )
                 fid_tgt = sent_tgt.video.file_unique_id if sent_tgt.video else None
             else:
                 continue

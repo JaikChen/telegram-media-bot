@@ -46,7 +46,8 @@ async def handle_listchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("📭 你当前没有管理任何 Bot 所在的频道/群组。")
         return
 
-    reply = "📋 **可管理的频道/群组列表**：\n\n"
+    # 修复：使用单星号粗体
+    reply = "📋 *可管理的频道/群组列表*：\n\n"
     for chat_id, title in allowed_chats:
         name = title.strip() if title else "(无名称)"
         reply += f"• `{chat_id}` → {name}\n"
@@ -72,14 +73,12 @@ async def handle_chatinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if r: title = r[0]
         conn.close()
 
-        # 获取各项配置
         rules = get_rules(chat_id)
         footer = get_footer(chat_id)
         replacements = get_replacements(chat_id)
         whitelisted_users = get_chat_whitelist(chat_id)
         quiet_mode = get_quiet_mode(chat_id)
 
-        # 格式化静音状态显示
         q_map = {"off": "🔔 正常回复", "quiet": "🔕 完全静音", "autodel": "🔥 阅后即焚"}
         q_status = q_map.get(quiet_mode, "🔔 正常回复")
 
@@ -89,7 +88,8 @@ async def handle_chatinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         details += f"• 替换词：{len(replacements)} 个\n"
         details += f"• 白名单用户：{len(whitelisted_users)} 人"
 
-        await msg.reply_text(f"📍 **频道信息**\n\n🆔 ID：`{chat_id}`\n📛 名称：{title}\n{details}", parse_mode="Markdown")
+        # 修复：使用单星号粗体
+        await msg.reply_text(f"📍 *频道信息*\n\n🆔 ID：`{chat_id}`\n📛 名称：{title}\n{details}", parse_mode="Markdown")
     else:
         await msg.reply_text("❌ 用法错误：/chatinfo -100频道ID")
 
@@ -119,7 +119,8 @@ async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.reply_text("📭 你管理的频道暂无清理记录。")
         return
 
-    reply = "📊 **清理统计**：\n\n" + "\n".join(f"• `{cid}` → {count} 次" for cid, count in allowed_rows)
+    # 修复：使用单星号粗体
+    reply = "📊 *清理统计*：\n\n" + "\n".join(f"• `{cid}` → {count} 次" for cid, count in allowed_rows)
     await msg.reply_text(reply.strip(), parse_mode="Markdown")
 
 
@@ -130,9 +131,9 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_global = is_global_admin(msg.from_user.id)
     role = "固定管理员 (Super Admin)" if is_global else "频道管理员 (Chat Admin)"
-    # 动态提示
     target_hint = " -100频道ID"
 
+    # 修复：将所有 ** 替换为 *
     help_text = f"""
 🤖 *Jaikcl_Bot 管理指南*
 👤 当前身份：`{role}`
@@ -140,7 +141,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 *提示*：点击命令即可复制，需将 `{target_hint}` 替换为实际 ID。
 
 ━━━━━━━━━━━━━━━━━━
-🧩 **基础规则 (Rules)**
+🧩 *基础规则 (Rules)*
 `/setrules`{target_hint} `规则...` — ⚡️ 覆盖设置所有规则
 `/addrule`{target_hint} `规则` — ➕ 添加单条规则
 `/delrule`{target_hint} `规则` — ➖ 删除单条规则
@@ -151,7 +152,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `keep_all` (不处理), `strip_all_if_links` (有链接删整条), `clean_links` (仅删链接), `remove_at_prefix` (删@前缀), `block_keywords` (启用屏蔽词), `maxlen:50` (限长50)
 
 ━━━━━━━━━━━━━━━━━━
-🛠 **内容处理 (Content)**
+🛠 *内容处理 (Content)*
 *🔑 关键词屏蔽*
 `/addkw`{target_hint} `词 [regex]` — 添加屏蔽词
 `/delkw`{target_hint} `词` — 删除屏蔽词
@@ -170,8 +171,9 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `/listallowed`{target_hint} — 查看白名单
 
 ━━━━━━━━━━━━━━━━━━
-🎮 **控制与查询 (Control)**
+🎮 *控制与查询 (Control)*
 `/setquiet`{target_hint} `[off/quiet/autodel]` — 🔕 设置Bot回复模式
+`/setvoting`{target_hint} `[on/off]` — 👍 开启/关闭互动投票
 `/lock`{target_hint} — 🔒 锁定(暂停清理)
 `/unlock`{target_hint} — 🔓 解锁(恢复清理)
 `/preview`{target_hint} `文本` — 👁‍🗨 模拟清理预览
@@ -180,7 +182,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `/stats` — 📊 查看清理统计
 
 ━━━━━━━━━━━━━━━━━━
-🔁 **转发设置 (Forward)**
+🔁 *转发设置 (Forward)*
 `/addforward` -100源 -100目标 — ✅ 添加转发
 `/delforward` -100源 -100目标 — ❌ 删除转发
 `/listforward` -100源 — 📋 查看转发目标
@@ -188,9 +190,8 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ━━━━━━━━━━━━━━━━━━
 """
 
-    # 仅固定管理员可见的系统命令
     if is_global:
-        help_text += """⚙️ **系统管理 (Super Admin)**
+        help_text += """⚙️ *系统管理 (Super Admin)*
 `/setlog`{target_hint} — 📝 设置全局日志频道
 `/dellog` — 📴 关闭日志记录
 `/cleanchats` — 🧹 清理无效/解散群组的数据

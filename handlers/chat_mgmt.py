@@ -6,7 +6,35 @@ from telegram.ext import ContextTypes
 from db import *
 from cleaner import clean_caption
 from handlers.utils import is_admin, check_chat_permission, reply_success
+from db import set_voting_enabled  # 导入新函数
 
+
+# 投票开关管理
+async def handle_setvoting(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not await is_admin(msg): return
+    args = msg.text.strip().split()
+
+    # 用法：/setvoting -100xxx on/off
+    if len(args) == 3:
+        chat_id = args[1]
+        state = args[2].lower()
+
+        if state not in ['on', 'off']:
+            await msg.reply_text("❌ 状态错误。可选：`on` (开启), `off` (关闭)", parse_mode="Markdown")
+            return
+
+        if not await check_chat_permission(msg.from_user.id, chat_id, context):
+            await msg.reply_text("🚫 你没有权限管理该频道。")
+            return
+
+        is_on = (state == 'on')
+        set_voting_enabled(chat_id, is_on)
+
+        status_text = "✅ 已开启互动投票 (仅限单图/视频)" if is_on else "🚫 已关闭互动投票"
+        await reply_success(msg, context, f"频道 {chat_id} {status_text}", chat_id)
+    else:
+        await msg.reply_text("❌ 用法错误：`/setvoting -100频道ID [on/off]`", parse_mode="Markdown")
 
 # =========================
 # 静音/清理模式

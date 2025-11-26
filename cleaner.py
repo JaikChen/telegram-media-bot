@@ -2,7 +2,7 @@
 # 用于清理说明文字中的链接、@前缀、关键词等内容，支持组合规则
 
 import re
-from db import get_keywords, get_rules, get_replacements, get_footer  # [修改] 增加导入
+from db import get_keywords, get_rules, get_replacements, get_footer, is_user_whitelisted
 from config import WHITELIST
 
 # =========================
@@ -33,33 +33,38 @@ def _parse_maxlen(rules: list[str]) -> int | None:
 # =========================
 # 主清理函数
 # =========================
-def clean_caption(text: str | None, chat_id: str) -> str | None:
+# [修复] 增加 user_id 参数，默认为 None 以兼容旧调用
+def clean_caption(text: str | None, chat_id: str, user_id: str | int | None = None) -> str | None:
     """根据频道规则清理说明文字"""
-    text = text or ""  # [修改] 即使为空也初始化为空字符串，以便后续追加页脚
+    text = text or ""
 
-    # 白名单：不清理
+    # 1. 全局白名单 (config.py)
     if chat_id in WHITELIST:
+        return text.strip() or None
+
+    # 2. [新增] 群组用户白名单 (db)
+    # 如果用户在白名单中，直接保留原文本（不进行清理）
+    if user_id and is_user_whitelisted(chat_id, str(user_id)):
         return text.strip() or None
 
     rules = get_rules(chat_id)
 
-    # [新增] 关键词替换 (优先执行)
+    # 关键词替换 (优先执行)
     replacements = get_replacements(chat_id)
     if replacements:
         for old, new in replacements:
             text = text.replace(old, new)
 
-    # 保留所有说明（但替换依然生效，页脚依然生效）
-    # 注意：如果规则是 keep_all，这里可以选择直接跳过删除逻辑
+    # 保留所有说明
     if "keep_all" in rules:
-        pass  # 继续向下执行以添加页脚，或在这里直接返回
+        pass
     else:
         # 有链接就整段删除
         if "strip_all_if_links" in rules:
             if LINK_REGEX.search(text) or MD_LINK_REGEX.search(text):
-                text = ""  # 变为空字符串
+                text = ""
 
-        # 关键词屏蔽 (如果变为空了就没必要查了)
+        # 关键词屏蔽
         if text and "block_keywords" in rules:
             for kw, is_regex in get_keywords(chat_id):
                 if is_regex:
@@ -68,6 +73,7 @@ def clean_caption(text: str | None, chat_id: str) -> str | None:
                             text = ""
                             break
                     except re.error:
+                        # 正则错误时忽略该关键词
                         continue
                 else:
                     if kw.lower() in text.lower():
@@ -94,7 +100,7 @@ def clean_caption(text: str | None, chat_id: str) -> str | None:
             text = "\n".join(line.strip() for line in text.splitlines())
             text = re.sub(r"\s{2,}", " ", text).strip()
 
-    # [新增] 追加自定义页脚
+    # 追加自定义页脚
     footer = get_footer(chat_id)
     if footer:
         if text:

@@ -1,8 +1,6 @@
 # main.py
-# 程序入口：初始化数据库，注册命令和消息处理器，启动 Bot
-
 import logging
-from telegram.ext import Application, MessageHandler, filters
+from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filters
 from config import BOT_TOKEN
 from db import init_db
 from handlers.media import handle_media
@@ -23,29 +21,29 @@ from handlers.chat_mgmt import (
     handle_lock, handle_unlock,
     handle_addforward, handle_delforward, handle_listforward,
     handle_allowuser, handle_blockuser, handle_listallowed,
-    handle_setquiet  # 静音/清理模式
+    handle_setquiet,
+    handle_setvoting  # [新增]
 )
 from handlers.info import (
     handle_listchats, handle_chatinfo, handle_stats, handle_help
 )
+from handlers.callback import handle_vote_callback  # [新增]
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
 
-def main():
-    # 初始化数据库
-    init_db()
 
-    # 创建应用
+def main():
+    init_db()
     app = Application.builder().token(BOT_TOKEN).build()
 
     # =========================
     # 注册命令处理器
     # =========================
 
-    # --- 系统管理 (仅固定管理员) ---
+    # --- 系统管理 ---
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/addadmin(\s|$)"), handle_addadmin))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/deladmin(\s|$)"), handle_deladmin))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/listadmins(\s|$)"), handle_listadmins))
@@ -57,37 +55,38 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/leave(\s|$)"), handle_leave))
 
     # --- 群组配置 ---
-    # 规则
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/setrules(\s|$)"), handle_setrules))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/addrule(\s|$)"), handle_addrule))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/delrule(\s|$)"), handle_delrule))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/listrules(\s|$)"), handle_listrules))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/clearrules(\s|$)"), handle_clearrules))
-    # 关键词
+
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/addkw(\s|$)"), handle_addkw))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/listkw(\s|$)"), handle_listkw))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/delkw(\s|$)"), handle_delkw))
-    # 替换
+
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/addreplace(\s|$)"), handle_addreplace))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/delreplace(\s|$)"), handle_delreplace))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/listreplace(\s|$)"), handle_listreplace))
-    # 页脚
+
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/setfooter(\s|$)"), handle_setfooter))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/delfooter(\s|$)"), handle_delfooter))
-    # 锁定
+
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/lock(\s|$)"), handle_lock))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/unlock(\s|$)"), handle_unlock))
-    # 转发
+
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/addforward(\s|$)"), handle_addforward))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/delforward(\s|$)"), handle_delforward))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/listforward(\s|$)"), handle_listforward))
-    # 白名单
+
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/allowuser(\s|$)"), handle_allowuser))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/blockuser(\s|$)"), handle_blockuser))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/listallowed(\s|$)"), handle_listallowed))
-    # 静音/清理模式
+
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/setquiet(\s|$)"), handle_setquiet))
-    # 预览
+    # [新增] 注册投票开关命令
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/setvoting(\s|$)"), handle_setvoting))
+
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/preview(\s|$)"), handle_preview))
 
     # --- 信息查询 ---
@@ -96,14 +95,16 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/stats(\s|$)"), handle_stats))
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^/help(\s|$)"), handle_help))
 
-    # =========================
-    # 注册媒体消息处理器
-    # =========================
+    # [新增] 注册回调处理器 (处理投票按钮点击)
+    # 注意：pattern 使用正则匹配以 "vote_" 开头的数据
+    app.add_handler(CallbackQueryHandler(handle_vote_callback, pattern="^vote_"))
+
+    # --- 媒体处理 ---
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO, handle_media))
 
-    # 启动 Bot
     print("🚀 Bot 已启动...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
