@@ -12,9 +12,10 @@ from db import (
     get_stats,
     get_chat_whitelist,
     get_quiet_mode,
-    is_voting_enabled
+    is_voting_enabled,
+    get_triggers  # [新增] 导入触发器查询
 )
-from handlers.utils import is_global_admin, is_admin, check_chat_permission
+from handlers.utils import is_global_admin, is_admin, check_chat_permission, escape_markdown
 
 
 async def handle_listchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -37,7 +38,7 @@ async def handle_listchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_global_admin(uid):
         allowed_chats = rows
     else:
-        status_msg = await msg.reply_text("⏳ 正在检查权限，请稍候...")
+        status_msg = await msg.reply_text("⏳ 正在检查权限...")
         for chat_id, title in rows:
             if await check_chat_permission(uid, chat_id, context):
                 allowed_chats.append((chat_id, title))
@@ -49,8 +50,8 @@ async def handle_listchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply = "📋 *可管理的频道/群组列表*：\n\n"
     for chat_id, title in allowed_chats:
-        name = title.strip() if title else "(无名称)"
-        reply += f"• `{chat_id}` → {name}\n"
+        safe_title = escape_markdown(title or "(无名称)")
+        reply += f"• `{chat_id}` → {safe_title}\n"
     await msg.reply_text(reply.strip(), parse_mode="Markdown")
 
 
@@ -65,37 +66,37 @@ async def handle_chatinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text("🚫 你没有权限查看该频道信息。")
             return
 
-        title = "(未记录名称)"
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
         c.execute("SELECT title FROM chats WHERE chat_id=?", (chat_id,))
         r = c.fetchone()
-        if r: title = r[0]
+        title = r[0] if r else "未记录"
         conn.close()
 
-        # 获取各项配置
         rules = get_rules(chat_id)
         footer = get_footer(chat_id)
         replacements = get_replacements(chat_id)
         whitelisted_users = get_chat_whitelist(chat_id)
         quiet_mode = get_quiet_mode(chat_id)
         voting_on = is_voting_enabled(chat_id)
+        triggers = get_triggers(chat_id)
 
-        # 状态格式化
-        q_map = {"off": "🔔 正常回复", "quiet": "🔕 完全静音", "autodel": "🔥 阅后即焚"}
-        q_status = q_map.get(quiet_mode, "🔔 正常回复")
+        q_map = {"off": "🔔 正常", "quiet": "🔕 静音", "autodel": "🔥 阅后即焚"}
+        q_status = q_map.get(quiet_mode, "🔔 正常")
         v_status = "✅ 开启" if voting_on else "🚫 关闭"
+        safe_title = escape_markdown(title)
 
         details = f"• 规则：`{', '.join(rules) or '(未设置)'}`\n"
         details += f"• 模式：{q_status}\n"
         details += f"• 投票：{v_status}\n"
-        details += f"• 页脚：{'✅ 已设置' if footer else '(无)'}\n"
+        details += f"• 页脚：{'✅ 已设' if footer else '(无)'}\n"
         details += f"• 替换：{len(replacements)} 个\n"
-        details += f"• 白名单用户：{len(whitelisted_users)} 人"
+        details += f"• 触发器：{len(triggers)} 个\n"
+        details += f"• 白名单：{len(whitelisted_users)} 人"
 
-        await msg.reply_text(f"📍 *频道信息*\n\n🆔 ID：`{chat_id}`\n📛 名称：{title}\n{details}", parse_mode="Markdown")
+        await msg.reply_text(f"📍 *频道信息*\n\n🆔 ID：`{chat_id}`\n📛 名称：{safe_title}\n{details}", parse_mode="Markdown")
     else:
-        await msg.reply_text("❌ 用法错误：/chatinfo -100频道ID")
+        await msg.reply_text("❌ 用法：/chatinfo -100频道ID")
 
 
 async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,10 +104,6 @@ async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg or not await is_admin(msg): return
 
     rows = get_stats()
-    if not rows:
-        await msg.reply_text("📭 暂无清理记录。")
-        return
-
     uid = msg.from_user.id
     allowed_rows = []
 
@@ -120,7 +117,7 @@ async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.delete()
 
     if not allowed_rows:
-        await msg.reply_text("📭 你管理的频道暂无清理记录。")
+        await msg.reply_text("📭 暂无数据")
         return
 
     reply = "📊 *清理统计*：\n\n" + "\n".join(f"• `{cid}` → {count} 次" for cid, count in allowed_rows)
@@ -143,77 +140,80 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 *提示*：点击命令即可复制，请将 `{target_hint}` 替换为真实ID。
 
 ━━━━━━━━━━━━━━━━━━
-🧩 **规则配置 (Rules)**
-`/setrules`{target_hint} `规则...` — ⚡️ 覆盖设置所有规则
-`/addrule`{target_hint} `规则` — ➕ 添加单条规则
-`/delrule`{target_hint} `规则` — ➖ 删除单条规则
-`/clearrules`{target_hint} — 🗑 清空所有规则
-`/listrules`{target_hint} — 📜 查看规则列表
-
-*📝 规则参数说明*：
-- `clean_keywords`: *温和屏蔽*。仅删除包含关键词的行，保留其他内容。
-- `block_keywords`: *严格屏蔽*。若含关键词则删除整条说明 (与上方二选一)。
-- `strip_all_if_links`: *严格删链*。若含链接则删除整条说明。
-- `clean_links`: *温和删链*。仅删除链接文本。
-- `remove_at_prefix`: 删除 @开头的引用。
-- `keep_all`: 不清理 (替换/页脚除外)。
-- `maxlen:50`: 限制长度。
+🎮 **控制与模式**
+`/setquiet`{target_hint} `[off/quiet/autodel]` — 🔕 回复模式
+`/setvoting`{target_hint} `[on/off]` — 👍 互动投票
+`/lock`{target_hint} — 🔒 锁定(暂停)
+`/unlock`{target_hint} — 🔓 解锁(恢复)
 
 ━━━━━━━━━━━━━━━━━━
-🛠 **内容增强 (Content)**
+🧩 **规则配置**
+`/setrules`{target_hint} `规则...` — ⚡️ 覆盖设置
+`/addrule`{target_hint} `规则` — ➕ 添加规则
+`/delrule`{target_hint} `规则` — ➖ 删除规则
+`/clearrules`{target_hint} — 🗑 清空规则
+`/listrules`{target_hint} — 📜 查看规则
+
+*📝 参数说明*：
+`clean_keywords`: *温和屏蔽* (仅删含关键词的行)
+`block_keywords`: *严格屏蔽* (含关键词删整条)
+`strip_all_if_links`: *严格删链* (含链接删整条)
+`clean_links`: *智能删链* (去链接留文字)
+`remove_at_prefix`: 删除 @引用
+`keep_all`: 不清理
+`maxlen:50`: 长度限制
+
+━━━━━━━━━━━━━━━━━━
+🛠 **内容与回复**
+*🤖 关键词自动回复*
+`/addtrigger`{target_hint} `词 内容` — 添加自动回复
+`/deltrigger`{target_hint} `词` — 删除自动回复
+`/listtriggers`{target_hint} — 查看列表
+
 *🔑 关键词屏蔽*
-`/addkw`{target_hint} `词 [regex]` — 添加屏蔽词
-`/delkw`{target_hint} `词` — 删除屏蔽词
-`/listkw`{target_hint} — 查看屏蔽列表
+`/addkw`{target_hint} `词 [regex]` — ➕ 屏蔽词
+`/delkw`{target_hint} `词` — ➖ 删除屏蔽
+`/listkw`{target_hint} — 📜 屏蔽列表
 
 *🔄 关键词替换*
-`/addreplace`{target_hint} `旧词 新词` — 设置替换
-`/delreplace`{target_hint} `旧词` — 删除替换
-`/listreplace`{target_hint} — 查看替换列表
+`/addreplace`{target_hint} `旧 新` — ➕ 替换
+`/delreplace`{target_hint} `旧` — ➖ 删除替换
+`/listreplace`{target_hint} — 📜 替换列表
 
 *📝 页脚 & 白名单*
-`/setfooter`{target_hint} `内容` — 设置消息小尾巴
-`/delfooter`{target_hint} — 删除页脚
-`/allowuser`{target_hint} `用户ID` — 🛡 添加白名单(免清理)
-`/blockuser`{target_hint} `用户ID` — 移除白名单
-`/listallowed`{target_hint} — 查看白名单
+`/setfooter`{target_hint} `内容` — 📝 设置页脚
+`/delfooter`{target_hint} — 🗑 删除页脚
+`/allowuser`{target_hint} `ID` — 🛡 加白名单
+`/blockuser`{target_hint} `ID` — 🚫 移出白名单
+`/listallowed`{target_hint} — 📜 查看白名单
 
 ━━━━━━━━━━━━━━━━━━
-🎮 **控制与模式 (Control)**
-`/setquiet`{target_hint} `[off/quiet/autodel]` — 🔕 设置Bot回复模式
-`/setvoting`{target_hint} `[on/off]` — 👍 开启/关闭互动投票
-`/lock`{target_hint} — 🔒 锁定频道(暂停Bot)
-`/unlock`{target_hint} — 🔓 解锁频道
-`/preview`{target_hint} `文本` — 👁‍🗨 模拟清理预览
+📊 **查询与监控**
+`/listchats` — 📋 管理列表
+`/chatinfo`{target_hint} — 📍 详细配置
+`/stats` — 📈 统计数据
+`/preview`{target_hint} `文本` — 👁‍🗨 模拟预览
 
 ━━━━━━━━━━━━━━━━━━
-📊 **查询与监控 (Query)**
-`/listchats` — 📋 查看我管理的频道列表
-`/chatinfo`{target_hint} — 📍 查看频道详细配置
-`/stats` — 📈 查看清理次数统计
-
-━━━━━━━━━━━━━━━━━━
-🔁 **转发设置 (Forward)**
-`/addforward` -100源 -100目标 — ✅ 添加转发关系
-`/delforward` -100源 -100目标 — ❌ 删除转发关系
-`/listforward` -100源 — 📋 查看转发目标
+🔁 **转发设置**
+`/addforward` -100源 -100目标 — ✅ 加转发
+`/delforward` -100源 -100目标 — ❌ 删转发
+`/listforward` -100源 — 📋 看转发
 
 ━━━━━━━━━━━━━━━━━━
 """
-
     if is_global:
-        help_text += f"""⚙️ *系统管理 (Super Admin)*
-`/setlog`{target_hint} — 📝 设置全局日志频道
-`/dellog` — 📴 关闭日志记录
-`/setlogfilter` — ⚖️ 设置日志类型 (clean error system...)
-`/cleanchats` — 🧹 清理无效/解散群组数据
-`/cleandb` — 💾 立即清理过期数据(1年)
-`/leave`{target_hint} — 👋 强制 Bot 退出群组
-`/addadmin 用户ID` — ➕ 添加动态管理员
-`/deladmin 用户ID` — ➖ 删除动态管理员
-`/listadmins` — 👑 查看所有管理员
-`/backupdb` — 📦 备份数据库
-`/restoredb` — 📥 恢复数据库(需回复文件)
+        help_text += f"""⚙️ *系统管理*
+`/setlog`{target_hint} — 📝 日志频道
+`/dellog` — 📴 关闭日志
+`/setlogfilter` — ⚖️ 日志过滤
+`/cleanchats` — 🧹 清理无效群
+`/cleandb` — 💾 维护数据库
+`/leave`{target_hint} — 👋 强制退群
+`/addadmin ID` — ➕ 动态管理员
+`/deladmin ID` — ➖ 删除管理员
+`/listadmins` — 👑 管理员列表
+`/backupdb` — 📦 备份
+`/restoredb` — 📥 恢复
 """
-
     await msg.reply_text(help_text.strip(), parse_mode="Markdown")
