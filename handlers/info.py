@@ -91,7 +91,7 @@ async def handle_chatinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         details += f"• 投票：{v_status}\n"
         details += f"• 页脚：{'✅ 已设置' if footer else '(无)'}\n"
         details += f"• 替换：{len(replacements)} 个\n"
-        details += f"• 白名单：{len(whitelisted_users)} 人"
+        details += f"• 白名单用户：{len(whitelisted_users)} 人"
 
         await msg.reply_text(f"📍 *频道信息*\n\n🆔 ID：`{chat_id}`\n📛 名称：{title}\n{details}", parse_mode="Markdown")
     else:
@@ -143,23 +143,24 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 💡 *提示*：点击命令即可复制，请将 `{target_hint}` 替换为真实ID。
 
 ━━━━━━━━━━━━━━━━━━
-🧩 *规则配置 (Rules)*
+🧩 **规则配置 (Rules)**
 `/setrules`{target_hint} `规则...` — ⚡️ 覆盖设置所有规则
 `/addrule`{target_hint} `规则` — ➕ 添加单条规则
 `/delrule`{target_hint} `规则` — ➖ 删除单条规则
 `/clearrules`{target_hint} — 🗑 清空所有规则
 `/listrules`{target_hint} — 📜 查看规则列表
 
-📝 *规则参数说明*：
-`keep_all`: 保留所有(不清理)
-`strip_all_if_links`: 若含链接(含文字链)则删除整条说明
-`clean_links`: 仅剔除文本中的链接，保留其他文字
-`remove_at_prefix`: 剔除 @开头的引用
-`block_keywords`: 启用关键词/正则屏蔽
-`maxlen:50`: 限制文字长度不超过50字
+*📝 规则参数说明*：
+- `clean_keywords`: *温和屏蔽*。仅删除包含关键词的行，保留其他内容。
+- `block_keywords`: *严格屏蔽*。若含关键词则删除整条说明 (与上方二选一)。
+- `strip_all_if_links`: *严格删链*。若含链接则删除整条说明。
+- `clean_links`: *温和删链*。仅删除链接文本。
+- `remove_at_prefix`: 删除 @开头的引用。
+- `keep_all`: 不清理 (替换/页脚除外)。
+- `maxlen:50`: 限制长度。
 
 ━━━━━━━━━━━━━━━━━━
-🛠 *内容增强 (Content)*
+🛠 **内容增强 (Content)**
 *🔑 关键词屏蔽*
 `/addkw`{target_hint} `词 [regex]` — 添加屏蔽词
 `/delkw`{target_hint} `词` — 删除屏蔽词
@@ -178,7 +179,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `/listallowed`{target_hint} — 查看白名单
 
 ━━━━━━━━━━━━━━━━━━
-🎮 *群组控制 (Control)*
+🎮 **控制与模式 (Control)**
 `/setquiet`{target_hint} `[off/quiet/autodel]` — 🔕 设置Bot回复模式
 `/setvoting`{target_hint} `[on/off]` — 👍 开启/关闭互动投票
 `/lock`{target_hint} — 🔒 锁定频道(暂停Bot)
@@ -186,13 +187,13 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `/preview`{target_hint} `文本` — 👁‍🗨 模拟清理预览
 
 ━━━━━━━━━━━━━━━━━━
-📊 *查询统计 (Query)*
+📊 **查询与监控 (Query)**
 `/listchats` — 📋 查看我管理的频道列表
 `/chatinfo`{target_hint} — 📍 查看频道详细配置
 `/stats` — 📈 查看清理次数统计
 
 ━━━━━━━━━━━━━━━━━━
-🔁 *转发设置 (Forward)*
+🔁 **转发设置 (Forward)**
 `/addforward` -100源 -100目标 — ✅ 添加转发关系
 `/delforward` -100源 -100目标 — ❌ 删除转发关系
 `/listforward` -100源 — 📋 查看转发目标
@@ -200,11 +201,11 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ━━━━━━━━━━━━━━━━━━
 """
 
-    # 仅固定管理员可见的系统命令
     if is_global:
         help_text += f"""⚙️ *系统管理 (Super Admin)*
 `/setlog`{target_hint} — 📝 设置全局日志频道
 `/dellog` — 📴 关闭日志记录
+`/setlogfilter` — ⚖️ 设置日志类型 (clean error system...)
 `/cleanchats` — 🧹 清理无效/解散群组数据
 `/cleandb` — 💾 立即清理过期数据(1年)
 `/leave`{target_hint} — 👋 强制 Bot 退出群组

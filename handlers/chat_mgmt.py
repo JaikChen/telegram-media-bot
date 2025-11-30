@@ -11,7 +11,9 @@ async def handle_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = msg.text.strip().split()
     if len(args) == 3:
         chat_id, mode = args[1], args[2].lower()
-        if mode not in ['off', 'quiet', 'autodel']: return
+        if mode not in ['off', 'quiet', 'autodel']:
+            await msg.reply_text("❌ 模式错误。可选：`off`, `quiet`, `autodel`", parse_mode="Markdown")
+            return
         if not await check_chat_permission(msg.from_user.id, chat_id, context):
             await msg.reply_text("🚫 无权"); return
         set_quiet_mode(chat_id, mode)
@@ -253,3 +255,39 @@ async def handle_listallowed(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if not await check_chat_permission(msg.from_user.id, chat_id, context): return
         users = get_chat_whitelist(chat_id)
         await msg.reply_text(f"📋 白名单：\n" + "\n".join(f"• {u}" for u in users) if users else "📭 空")
+
+# [新增] 关键词自动回复
+async def handle_addtrigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not await is_admin(msg): return
+    # 格式: /addtrigger -100xxx 关键词 内容
+    args = msg.text.strip().split(maxsplit=3)
+    if len(args) == 4 and args[1].startswith("-100"):
+        chat_id, kw, text = args[1], args[2].lower(), args[3]
+        if not await check_chat_permission(msg.from_user.id, chat_id, context): return
+        add_trigger(chat_id, kw, text)
+        await reply_success(msg, context, f"✅ 触发器已加: {kw}", chat_id)
+    else:
+        await msg.reply_text("❌ 用法: `/addtrigger -100xxx 关键词 回复内容`", parse_mode="Markdown")
+
+async def handle_deltrigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not await is_admin(msg): return
+    args = msg.text.strip().split()
+    if len(args) == 3 and args[1].startswith("-100"):
+        chat_id, kw = args[1], args[2].lower()
+        if not await check_chat_permission(msg.from_user.id, chat_id, context): return
+        del_trigger(chat_id, kw)
+        await reply_success(msg, context, f"🗑 触发器已删: {kw}", chat_id)
+    else:
+        await msg.reply_text("❌ 用法: `/deltrigger -100xxx 关键词`", parse_mode="Markdown")
+
+async def handle_listtriggers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not await is_admin(msg): return
+    args = msg.text.strip().split()
+    if len(args) == 2:
+        chat_id = args[1]
+        if not await check_chat_permission(msg.from_user.id, chat_id, context): return
+        triggers = get_triggers(chat_id)
+        await msg.reply_text(f"📋 触发器:\n" + "\n".join(f"• `{k}` → {v[:20]}..." for k, v in triggers.items()) if triggers else "📭 空", parse_mode="Markdown")
