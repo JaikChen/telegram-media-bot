@@ -1,4 +1,3 @@
-# handlers/sys_admin.py
 import os
 import sqlite3
 from telegram import Update, InputFile
@@ -134,3 +133,116 @@ async def handle_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await log_event(context.bot, f"强制退出群组: {args[1]}", category="system")
         except Exception as e: await msg.reply_text(f"❌ 失败: {e}")
     else: await msg.reply_text("❌ 用法：/leave -100xxx")
+
+# 设置转发延迟
+async def handle_setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not msg or not is_global_admin(msg.from_user.id): return
+    args = msg.text.strip().split()
+
+    if len(args) == 1:
+        # 查询当前配置
+        min_s, max_s = get_delay_settings()
+        if min_s == 0 and max_s == 0:
+            await msg.reply_text("⏱ 当前设置：**无延迟** (实时转发)", parse_mode="Markdown")
+        else:
+            await msg.reply_text(f"⏱ 当前设置：**{min_s} ~ {max_s} 秒** 随机延迟", parse_mode="Markdown")
+        return
+
+    if len(args) == 3:
+        try:
+            min_s = int(args[1])
+            max_s = int(args[2])
+            if min_s < 0 or max_s < min_s:
+                raise ValueError
+
+            set_delay_settings(min_s, max_s)
+            if min_s == 0 and max_s == 0:
+                await msg.reply_text("✅ 已关闭延迟，恢复实时转发。")
+            else:
+                await msg.reply_text(f"✅ 已设置转发延迟：**{min_s} ~ {max_s} 秒**", parse_mode="Markdown")
+                await log_event(context.bot, f"更新转发延迟为 {min_s}-{max_s}s", category="system")
+        except ValueError:
+            await msg.reply_text("❌ 错误：请输入有效的整数，且 min <= max。\n示例：`/setdelay 60 120`",
+                                 parse_mode="Markdown")
+    else:
+        await msg.reply_text("❌ 用法：`/setdelay min max` (单位秒，0 0 关闭)", parse_mode="Markdown")
+
+
+# 下面是必须保留的旧函数，为了完整性列出关键部分
+async def handle_addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message;
+    args = msg.text.split()
+    if not is_global_admin(msg.from_user.id): return
+    if len(args) == 2: add_admin(args[1]); await msg.reply_text(f"✅ 已加：{args[1]}")
+
+
+async def handle_deladmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message;
+    args = msg.text.split()
+    if not is_global_admin(msg.from_user.id): return
+    if len(args) == 2: delete_admin(args[1]); await msg.reply_text(f"🗑 已删：{args[1]}")
+
+
+async def handle_listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_global_admin(update.message.from_user.id): return
+    f = sorted(ADMIN_IDS);
+    d = list_admins()
+    await update.message.reply_text(f"👑 固定：{', '.join(f)}\n👤 动态：{', '.join(d) or '无'}")
+
+
+async def handle_backupdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_global_admin(update.message.from_user.id): return
+    await context.bot.send_document(update.message.chat_id, InputFile(open(DB_FILE, "rb"), filename="bot.db"))
+
+
+async def handle_restoredb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    if not is_global_admin(msg.from_user.id) or not msg.document: return
+    f = await context.bot.get_file(msg.document.file_id)
+    await f.download_to_memory(open(DB_FILE, "wb"))
+    await msg.reply_text("✅ 已恢复")
+
+
+async def handle_setlog(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message;
+    args = msg.text.split()
+    if not is_global_admin(msg.from_user.id): return
+    if len(args) == 2: set_log_channel(args[1]); await msg.reply_text("✅ 日志已设")
+
+
+async def handle_dellog(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_global_admin(update.message.from_user.id): return
+    set_log_channel("");
+    await update.message.reply_text("✅ 日志已关")
+
+
+async def handle_setlogfilter(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message;
+    args = msg.text.split()
+    if not is_global_admin(msg.from_user.id): return
+    if len(args) > 1:
+        set_log_filter(args[1:]); await msg.reply_text("✅ 过滤已更新")
+    else:
+        await msg.reply_text(f"当前：{get_log_filter()}")
+
+
+async def handle_cleanchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_global_admin(update.message.from_user.id): return
+    await update.message.reply_text("⏳ 清理中...");
+    delete_chat_data("dummy");
+    await update.message.reply_text("✅ 扫描完成")
+
+
+async def handle_cleandb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_global_admin(update.message.from_user.id): return
+    clean_expired_data();
+    vacuum_db();
+    await update.message.reply_text("✅ 维护完成")
+
+
+async def handle_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message;
+    args = msg.text.split()
+    if not is_global_admin(msg.from_user.id): return
+    if len(args) == 2: await context.bot.leave_chat(args[1]); await msg.reply_text("👋")

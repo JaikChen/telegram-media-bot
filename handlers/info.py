@@ -13,7 +13,8 @@ from db import (
     get_chat_whitelist,
     get_quiet_mode,
     is_voting_enabled,
-    get_triggers
+    get_triggers,
+    get_delay_settings
 )
 from handlers.utils import is_global_admin, is_admin, check_chat_permission, escape_markdown
 
@@ -133,54 +134,56 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     role = "固定管理员 (Super Admin)" if is_global else "频道管理员 (Chat Admin)"
     target_hint = " -100频道ID"
 
-    help_text = f"""
-🤖 *Jaikcl_Bot 使用手册*
-👤 当前权限：`{role}`
+    # 获取当前的延迟设置用于展示
+    min_s, max_s = get_delay_settings()
+    delay_status = f"{min_s}~{max_s}秒" if max_s > 0 else "关闭(实时)"
 
-💡 *提示*：点击命令可复制，`{target_hint}` 需替换为真实ID。
+    help_text = f"""
+🤖 *Jaikcl_Bot 全能手册*
+👤 身份：`{role}`
+⏱ 全局延迟：`{delay_status}`
+
+💡 *提示*：点击命令可复制，请将 `{target_hint}` 替换为真实ID。
 
 ━━━━━━━━━━━━━━━━━━
-🛠 **内容增强 (Content)**
-*🔑 关键词屏蔽* (支持批量)
-`/addkw`{target_hint} `词1 词2 ... [regex]` — ➕ 添加(批量)
-`/addkw all 词1 词2 ...` — 🌐 **全群添加** (仅超管)
+🛠 **内容净化与增强 (Content)**
+*🔑 关键词屏蔽* (支持批量/正则)
+`/addkw`{target_hint} `词1 词2 ...` — ➕ 批量添加
+`/addkw`{target_hint} `... regex` — 🧩 启用正则模式
+`/addkw all ...` — 🌐 **全群添加** (仅超管)
 `/delkw`{target_hint} `词` — ➖ 删除屏蔽
-`/listkw`{target_hint} — 📜 屏蔽列表
+`/listkw`{target_hint} — 📜 查看列表
 
-*🔄 关键词替换*
-`/addreplace`{target_hint} `旧 新` — ➕ 替换
+*🔄 替换 & 页脚 & 白名单*
+`/addreplace`{target_hint} `旧 新` — ➕ 文本替换
 `/delreplace`{target_hint} `旧` — ➖ 删除替换
-`/listreplace`{target_hint} — 📜 替换列表
-
-*📝 页脚 & 白名单*
-`/setfooter`{target_hint} `内容` — 📝 设置页脚
+`/setfooter`{target_hint} `内容` — 📝 设置小尾巴
 `/delfooter`{target_hint} — 🗑 删除页脚
-`/allowuser`{target_hint} `ID` — 🛡 加白名单
+`/allowuser`{target_hint} `ID` — 🛡 用户白名单(免清理)
 `/blockuser`{target_hint} `ID` — 🚫 移出白名单
-`/listallowed`{target_hint} — 📜 查看白名单
 
 ━━━━━━━━━━━━━━━━━━
 🧩 **规则配置 (Rules)**
 `/setrules`{target_hint} `规则...` — ⚡️ 覆盖设置
-`/addrule`{target_hint} `规则` — ➕ 添加规则
-`/delrule`{target_hint} `规则` — ➖ 删除规则
+`/addrule`{target_hint} `规则` — ➕ 添加单条
+`/delrule`{target_hint} `规则` — ➖ 删除单条
 `/clearrules`{target_hint} — 🗑 清空规则
 `/listrules`{target_hint} — 📜 查看规则
 
-*📝 规则参数说明*：
-`clean_keywords`: *温和屏蔽* (仅删含关键词的行)
-`block_keywords`: *严格屏蔽* (含关键词删整条)
-`strip_all_if_links`: *严格删链* (含链接删整条)
-`clean_links`: *智能删链* (去链接留文字)
+*📝 常用规则参数*：
+`clean_keywords`: **温和屏蔽** (仅删含广告的行)
+`block_keywords`: **严格屏蔽** (发现关键词删整条)
+`clean_links`: **智能删链** (去链接但保留文字)
+`strip_all_if_links`: **严格删链** (有链接则删整条)
 `remove_at_prefix`: 删除 @引用
-`keep_all`: 不清理
-`maxlen:50`: 长度限制
+`keep_all`: 不做任何清理
+`maxlen:50`: 限制长度
 
 ━━━━━━━━━━━━━━━━━━
-🎮 **控制与回复**
+🎮 **控制与交互 (Control)**
 `/setquiet`{target_hint} `[off/quiet/autodel]` — 🔕 回复模式
-`/setvoting`{target_hint} `[on/off]` — 👍 互动投票
-`/lock`{target_hint} — 🔒 锁定(暂停)
+`/setvoting`{target_hint} `[on/off]` — 👍 互动投票开关
+`/lock`{target_hint} — 🔒 锁定(暂停Bot)
 `/unlock`{target_hint} — 🔓 解锁(恢复)
 
 *🤖 关键词自动回复*
@@ -188,33 +191,32 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `/deltrigger`{target_hint} `词` — 删除
 `/listtriggers`{target_hint} — 列表
 
-━━━━━━━━━━━━━━━━━━
-📊 **查询与监控**
-`/listchats` — 📋 管理列表
-`/chatinfo`{target_hint} — 📍 详细配置
-`/stats` — 📈 统计数据
-`/preview`{target_hint} `文本` — 👁‍🗨 模拟预览
+*🌫 自动防剧透*
+发送媒体说明中包含 `#spoiler` / `#剧透` / `#nsfw` 即可自动打码。
 
 ━━━━━━━━━━━━━━━━━━
-🔁 **转发设置**
-`/addforward` -100源 -100目标 — ✅ 加转发
-`/delforward` -100源 -100目标 — ❌ 删转发
-`/listforward` -100源 — 📋 看转发
+🔁 **转发设置 (Forward)**
+`/addforward` -100源 -100目标 — ✅ 建立转发
+`/delforward` -100源 -100目标 — ❌ 解除转发
+`/listforward` -100源 — 📋 查看转发链
 
 ━━━━━━━━━━━━━━━━━━
 """
+    # 仅固定管理员可见的系统命令
     if is_global:
-        help_text += f"""⚙️ *系统管理 (超管)*
-`/setlog`{target_hint} — 📝 日志频道
+        help_text += f"""⚙️ *系统管理 (Super Admin)*
+`/setdelay min max` — ⏱ **设置转发延迟(秒)**
+`/setlog`{target_hint} — 📝 设置日志频道
+`/setlogfilter` — ⚖️ 过滤日志类型
 `/dellog` — 📴 关闭日志
-`/setlogfilter` — ⚖️ 日志过滤
-`/cleanchats` — 🧹 清理无效群
-`/cleandb` — 💾 维护数据库
+`/cleanchats` — 🧹 清理无效群组数据
+`/cleandb` — 💾 数据库维护(VACUUM)
 `/leave`{target_hint} — 👋 强制退群
-`/addadmin ID` — ➕ 动态管理员
-`/deladmin ID` — ➖ 删除管理员
+`/addadmin ID` — ➕ 添加动态管理员
+`/deladmin ID` — ➖ 删除动态管理员
 `/listadmins` — 👑 管理员列表
-`/backupdb` — 📦 备份
-`/restoredb` — 📥 恢复
+`/backupdb` — 📦 备份数据库
+`/restoredb` — 📥 恢复数据库
 """
+
     await msg.reply_text(help_text.strip(), parse_mode="Markdown")

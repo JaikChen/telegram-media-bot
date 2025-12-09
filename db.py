@@ -9,7 +9,7 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
-    # 1. 基础核心表
+    # --- 原有表结构 (保持不变) ---
     c.execute("""
         CREATE TABLE IF NOT EXISTS seen (
             chat_id TEXT,
@@ -23,7 +23,6 @@ def init_db():
     except sqlite3.OperationalError:
         pass
 
-    # 2. 配置表
     c.execute("CREATE TABLE IF NOT EXISTS chats (chat_id TEXT PRIMARY KEY, title TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS keywords (chat_id TEXT, word TEXT, is_regex INTEGER DEFAULT 0)")
     c.execute("CREATE TABLE IF NOT EXISTS locked (chat_id TEXT PRIMARY KEY)")
@@ -31,7 +30,6 @@ def init_db():
     c.execute("CREATE TABLE IF NOT EXISTS rules (chat_id TEXT, rule TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS admins (user_id TEXT PRIMARY KEY)")
 
-    # 3. 转发与记录
     c.execute(
         "CREATE TABLE IF NOT EXISTS forward_map (source_chat_id TEXT, target_chat_id TEXT, PRIMARY KEY (source_chat_id, target_chat_id))")
     c.execute(
@@ -39,7 +37,6 @@ def init_db():
     c.execute(
         "CREATE TABLE IF NOT EXISTS album_forwarded (source_chat_id TEXT, media_group_id TEXT, target_chat_id TEXT, PRIMARY KEY (source_chat_id, media_group_id, target_chat_id))")
 
-    # 4. 新功能表
     c.execute("CREATE TABLE IF NOT EXISTS footers (chat_id TEXT PRIMARY KEY, text TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS replacements (chat_id TEXT, old_word TEXT, new_word TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)")
@@ -51,40 +48,59 @@ def init_db():
     c.execute(
         "CREATE TABLE IF NOT EXISTS triggers (chat_id TEXT, keyword TEXT, reply_text TEXT, PRIMARY KEY (chat_id, keyword))")
 
+    # --- [新增] 转发队列与延迟配置 ---
+    # queue_id: 自增ID
+    # group_id: 相册ID (用于保持相册完整性)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS forward_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            target_chat_id TEXT,
+            media_type TEXT,
+            file_id TEXT,
+            caption TEXT,
+            has_spoiler INTEGER DEFAULT 0,
+            file_unique_id TEXT,
+            media_group_id TEXT,
+            created_at INTEGER
+        )
+    """)
+
     conn.commit()
     conn.close()
 
 
+# ... (保留原有维护与读写函数: clean_expired_data, vacuum_db, delete_chat_data, add_seen, has_seen, add_forward_seen, has_forward_seen, save_chat, inc_stat, get_stats) ...
+# 请确保保留上述原有函数，此处省略以节省篇幅，实际文件中请保留。
 # --- 维护 ---
 def clean_expired_data(days: int = 365) -> int:
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE);
     c = conn.cursor()
     expire_time = int(time.time()) - (days * 86400)
     c.execute("DELETE FROM seen WHERE created_at > 0 AND created_at < ?", (expire_time,))
     deleted_count = c.rowcount
-    conn.commit()
+    conn.commit();
     conn.close()
     return deleted_count
 
 
 def vacuum_db():
-    conn = sqlite3.connect(DB_FILE)
-    conn.execute("VACUUM")
+    conn = sqlite3.connect(DB_FILE);
+    conn.execute("VACUUM");
     conn.close()
 
 
 def delete_chat_data(chat_id: str):
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_FILE);
     c = conn.cursor()
     tables = ["chats", "rules", "keywords", "locked", "stats", "footers", "replacements",
               "seen", "forward_seen", "user_whitelist", "quiet_mode", "votes", "vote_settings", "triggers"]
     for t in tables: c.execute(f"DELETE FROM {t} WHERE chat_id=?", (chat_id,))
     c.execute("DELETE FROM forward_map WHERE source_chat_id=? OR target_chat_id=?", (chat_id, chat_id))
     c.execute("DELETE FROM album_forwarded WHERE source_chat_id=? OR target_chat_id=?", (chat_id, chat_id))
-    conn.commit()
+    # [新增] 清理队列
+    c.execute("DELETE FROM forward_queue WHERE target_chat_id=?", (chat_id,))
+    conn.commit();
     conn.close()
-
-    # 清除缓存
     get_rules.cache_clear();
     get_keywords.cache_clear();
     get_footer.cache_clear()
@@ -96,18 +112,7 @@ def delete_chat_data(chat_id: str):
     get_triggers.cache_clear()
 
 
-# --- [新增] 获取所有群组ID ---
-def get_all_chat_ids():
-    """获取数据库中记录的所有群组ID"""
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT chat_id FROM chats")
-    rows = c.fetchall()
-    conn.close()
-    return [r[0] for r in rows]
-
-
-# --- 核心读写 ---
+# --- 核心读写 (原有) ---
 def add_seen(chat_id, fid):
     conn = sqlite3.connect(DB_FILE);
     c = conn.cursor()
@@ -175,7 +180,94 @@ def get_stats():
     return rows
 
 
-# --- 规则与配置 (带缓存) ---
+# --- [新增] 获取所有群组ID ---
+def get_all_chat_ids():
+    conn = sqlite3.connect(DB_FILE);
+    c = conn.cursor()
+    c.execute("SELECT chat_id FROM chats")
+    rows = c.fetchall();
+    conn.close()
+    return [r[0] for r in rows]
+
+
+# --- [新增] 延迟队列管理 ---
+def enqueue_forward(target_id, media_type, file_id, caption, has_spoiler, file_unique_id, media_group_id=None):
+    """将消息加入待发送队列"""
+    conn = sqlite3.connect(DB_FILE);
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO forward_queue 
+        (target_chat_id, media_type, file_id, caption, has_spoiler, file_unique_id, media_group_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (target_id, media_type, file_id, caption, 1 if has_spoiler else 0, file_unique_id, media_group_id,
+          int(time.time())))
+    conn.commit();
+    conn.close()
+
+
+def peek_forward_queue():
+    """获取队列中最老的一条消息（用于检查是否还有任务）"""
+    conn = sqlite3.connect(DB_FILE);
+    c = conn.cursor()
+    c.execute("SELECT * FROM forward_queue ORDER BY id ASC LIMIT 1")
+    row = c.fetchone()
+    conn.close()
+    return row
+
+
+def pop_forward_group(target_id, media_group_id):
+    """获取并删除指定相册组的所有消息"""
+    conn = sqlite3.connect(DB_FILE);
+    c = conn.cursor()
+    c.execute("SELECT * FROM forward_queue WHERE target_chat_id=? AND media_group_id=? ORDER BY id ASC",
+              (target_id, media_group_id))
+    rows = c.fetchall()
+    if rows:
+        c.execute("DELETE FROM forward_queue WHERE target_chat_id=? AND media_group_id=?", (target_id, media_group_id))
+        conn.commit()
+    conn.close()
+    return rows
+
+
+def pop_forward_single(row_id):
+    """删除单条已发送的消息"""
+    conn = sqlite3.connect(DB_FILE);
+    c = conn.cursor()
+    c.execute("DELETE FROM forward_queue WHERE id=?", (row_id,))
+    conn.commit();
+    conn.close()
+
+
+# [新增] 延迟时间配置
+@lru_cache(maxsize=1)
+def get_delay_settings():
+    """获取延迟范围 (min, max) 秒"""
+    conn = sqlite3.connect(DB_FILE);
+    c = conn.cursor()
+    c.execute("SELECT value FROM settings WHERE key='forward_delay'")
+    r = c.fetchone()
+    conn.close()
+    if r and r[0]:
+        try:
+            parts = r[0].split(',')
+            return int(parts[0]), int(parts[1])
+        except:
+            pass
+    return (0, 0)  # 默认无延迟
+
+
+def set_delay_settings(min_s, max_s):
+    conn = sqlite3.connect(DB_FILE);
+    c = conn.cursor()
+    val = f"{min_s},{max_s}"
+    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('forward_delay', ?)", (val,))
+    conn.commit();
+    conn.close();
+    get_delay_settings.cache_clear()
+
+
+# ... (保留原有规则配置函数: get_rules, add_rule, delete_rule, clear_rules, get_keywords, add_keyword, delete_keyword...) ...
+# 请确保以下函数在文件中：
 @lru_cache(maxsize=128)
 def get_rules(chat_id):
     conn = sqlite3.connect(DB_FILE);
@@ -347,7 +439,6 @@ def list_admins():
     return [r[0] for r in rows]
 
 
-# --- 转发 ---
 def add_forward(source, target):
     conn = sqlite3.connect(DB_FILE);
     c = conn.cursor()
