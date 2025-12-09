@@ -13,7 +13,7 @@ from db import (
     get_chat_whitelist,
     get_quiet_mode,
     is_voting_enabled,
-    get_triggers  # [新增] 导入触发器查询
+    get_triggers
 )
 from handlers.utils import is_global_admin, is_admin, check_chat_permission, escape_markdown
 
@@ -134,44 +134,16 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_hint = " -100频道ID"
 
     help_text = f"""
-🤖 *Jaikcl_Bot 全能管理指南*
-👤 当前身份：`{role}`
+🤖 *Jaikcl_Bot 使用手册*
+👤 当前权限：`{role}`
 
-💡 *提示*：点击命令即可复制，请将 `{target_hint}` 替换为真实ID。
-
-━━━━━━━━━━━━━━━━━━
-🎮 **控制与模式**
-`/setquiet`{target_hint} `[off/quiet/autodel]` — 🔕 回复模式
-`/setvoting`{target_hint} `[on/off]` — 👍 互动投票
-`/lock`{target_hint} — 🔒 锁定(暂停)
-`/unlock`{target_hint} — 🔓 解锁(恢复)
+💡 *提示*：点击命令可复制，`{target_hint}` 需替换为真实ID。
 
 ━━━━━━━━━━━━━━━━━━
-🧩 **规则配置**
-`/setrules`{target_hint} `规则...` — ⚡️ 覆盖设置
-`/addrule`{target_hint} `规则` — ➕ 添加规则
-`/delrule`{target_hint} `规则` — ➖ 删除规则
-`/clearrules`{target_hint} — 🗑 清空规则
-`/listrules`{target_hint} — 📜 查看规则
-
-*📝 参数说明*：
-`clean_keywords`: *温和屏蔽* (仅删含关键词的行)
-`block_keywords`: *严格屏蔽* (含关键词删整条)
-`strip_all_if_links`: *严格删链* (含链接删整条)
-`clean_links`: *智能删链* (去链接留文字)
-`remove_at_prefix`: 删除 @引用
-`keep_all`: 不清理
-`maxlen:50`: 长度限制
-
-━━━━━━━━━━━━━━━━━━
-🛠 **内容与回复**
-*🤖 关键词自动回复*
-`/addtrigger`{target_hint} `词 内容` — 添加自动回复
-`/deltrigger`{target_hint} `词` — 删除自动回复
-`/listtriggers`{target_hint} — 查看列表
-
-*🔑 关键词屏蔽*
-`/addkw`{target_hint} `词 [regex]` — ➕ 屏蔽词
+🛠 **内容增强 (Content)**
+*🔑 关键词屏蔽* (支持批量)
+`/addkw`{target_hint} `词1 词2 ... [regex]` — ➕ 添加(批量)
+`/addkw all 词1 词2 ...` — 🌐 **全群添加** (仅超管)
 `/delkw`{target_hint} `词` — ➖ 删除屏蔽
 `/listkw`{target_hint} — 📜 屏蔽列表
 
@@ -186,6 +158,35 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `/allowuser`{target_hint} `ID` — 🛡 加白名单
 `/blockuser`{target_hint} `ID` — 🚫 移出白名单
 `/listallowed`{target_hint} — 📜 查看白名单
+
+━━━━━━━━━━━━━━━━━━
+🧩 **规则配置 (Rules)**
+`/setrules`{target_hint} `规则...` — ⚡️ 覆盖设置
+`/addrule`{target_hint} `规则` — ➕ 添加规则
+`/delrule`{target_hint} `规则` — ➖ 删除规则
+`/clearrules`{target_hint} — 🗑 清空规则
+`/listrules`{target_hint} — 📜 查看规则
+
+*📝 规则参数说明*：
+`clean_keywords`: *温和屏蔽* (仅删含关键词的行)
+`block_keywords`: *严格屏蔽* (含关键词删整条)
+`strip_all_if_links`: *严格删链* (含链接删整条)
+`clean_links`: *智能删链* (去链接留文字)
+`remove_at_prefix`: 删除 @引用
+`keep_all`: 不清理
+`maxlen:50`: 长度限制
+
+━━━━━━━━━━━━━━━━━━
+🎮 **控制与回复**
+`/setquiet`{target_hint} `[off/quiet/autodel]` — 🔕 回复模式
+`/setvoting`{target_hint} `[on/off]` — 👍 互动投票
+`/lock`{target_hint} — 🔒 锁定(暂停)
+`/unlock`{target_hint} — 🔓 解锁(恢复)
+
+*🤖 关键词自动回复*
+`/addtrigger`{target_hint} `词 内容` — 添加
+`/deltrigger`{target_hint} `词` — 删除
+`/listtriggers`{target_hint} — 列表
 
 ━━━━━━━━━━━━━━━━━━
 📊 **查询与监控**
@@ -203,7 +204,7 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ━━━━━━━━━━━━━━━━━━
 """
     if is_global:
-        help_text += f"""⚙️ *系统管理*
+        help_text += f"""⚙️ *系统管理 (超管)*
 `/setlog`{target_hint} — 📝 日志频道
 `/dellog` — 📴 关闭日志
 `/setlogfilter` — ⚖️ 日志过滤

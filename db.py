@@ -2,7 +2,7 @@
 import sqlite3
 import time
 from functools import lru_cache
-from config import DB_FILE  # [重要] 只能从 config 导入，不能从 db 导入
+from config import DB_FILE
 
 
 def init_db():
@@ -94,6 +94,17 @@ def delete_chat_data(chat_id: str):
     get_quiet_mode.cache_clear();
     is_voting_enabled.cache_clear();
     get_triggers.cache_clear()
+
+
+# --- [新增] 获取所有群组ID ---
+def get_all_chat_ids():
+    """获取数据库中记录的所有群组ID"""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT chat_id FROM chats")
+    rows = c.fetchall()
+    conn.close()
+    return [r[0] for r in rows]
 
 
 # --- 核心读写 ---
