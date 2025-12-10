@@ -1,5 +1,7 @@
+# handlers/media.py
 import asyncio
 import random
+from cachetools import TTLCache
 from telegram import Update, InputMediaPhoto, InputMediaVideo
 from telegram.ext import ContextTypes
 from db import (
@@ -13,7 +15,9 @@ from cleaner import clean_caption, check_spoiler_tags, restore_all_tags
 from handlers.callback import get_vote_markup
 from handlers.utils import log_event
 
-album_cache = {}
+# [优化] 使用 TTLCache 防止内存泄漏
+# 缓存最多保存 1000 个相册 ID，每个 ID 存活 600 秒
+album_cache = TTLCache(maxsize=1000, ttl=600)
 
 
 async def forward_worker(context: ContextTypes.DEFAULT_TYPE):
@@ -63,6 +67,7 @@ async def forward_worker(context: ContextTypes.DEFAULT_TYPE):
 
 async def process_album(context: ContextTypes.DEFAULT_TYPE, gid: str, chat_id: str):
     await asyncio.sleep(4)
+    # TTLCache 的 pop 操作与 dict 类似
     group_data = album_cache.pop(gid, None)
     if not group_data: return
     msgs = group_data["messages"]

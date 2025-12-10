@@ -1,136 +1,107 @@
 # handlers/info.py
-# 信息查询命令：列表、详情、统计、帮助
-
 from telegram import Update
 from telegram.ext import ContextTypes
-# 引入 execute_sql 用于直接查询
 from db import (
-    get_rules,
-    get_footer,
-    get_replacements,
-    get_stats,
-    get_chat_whitelist,
-    get_quiet_mode,
-    is_voting_enabled,
-    get_triggers,
-    get_delay_settings,
-    execute_sql
+    get_rules, get_footer, get_replacements, get_stats,
+    get_chat_whitelist, get_quiet_mode, is_voting_enabled,
+    get_triggers, get_delay_settings, execute_sql
 )
-from handlers.utils import is_global_admin, is_admin, check_chat_permission, escape_markdown
+from handlers.utils import admin_only, is_global_admin, check_chat_permission, escape_markdown
+from locales import get_text
 
-
+@admin_only
 async def handle_listchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if not msg or not await is_admin(msg): return
-
-    # [修改] 使用异步 execute_sql 替代 sqlite3.connect
     rows = await execute_sql("SELECT chat_id, title FROM chats ORDER BY chat_id", fetchall=True)
-
     if not rows:
-        await msg.reply_text("📭 当前没有记录任何频道或群组。")
+        await update.message.reply_text(get_text("no_data"))
         return
 
-    uid = msg.from_user.id
+    uid = update.message.from_user.id
     allowed_chats = []
 
     if is_global_admin(uid):
         allowed_chats = rows
     else:
-        status_msg = await msg.reply_text("⏳ 正在检查权限...")
+        status_msg = await update.message.reply_text("⏳ 正在检查权限...")
         for chat_id, title in rows:
             if await check_chat_permission(uid, chat_id, context):
                 allowed_chats.append((chat_id, title))
         await status_msg.delete()
 
     if not allowed_chats:
-        await msg.reply_text("📭 你当前没有管理任何 Bot 所在的频道/群组。")
+        await update.message.reply_text("📭 你当前没有管理任何 Bot 所在的频道/群组。")
         return
 
     reply = "📋 *可管理的频道/群组列表*：\n\n"
     for chat_id, title in allowed_chats:
         safe_title = escape_markdown(title or "(无名称)")
         reply += f"• `{chat_id}` → {safe_title}\n"
-    await msg.reply_text(reply.strip(), parse_mode="Markdown")
+    await update.message.reply_text(reply.strip(), parse_mode="Markdown")
 
-
+@admin_only
 async def handle_chatinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if not msg or not await is_admin(msg): return
-    args = msg.text.strip().split()
+    if len(context.args) < 1:
+        await update.message.reply_text(get_text("args_error"))
+        return
 
-    if len(args) == 2:
-        chat_id = args[1]
-        if not await check_chat_permission(msg.from_user.id, chat_id, context):
-            await msg.reply_text("🚫 你没有权限查看该频道信息。")
-            return
+    chat_id = context.args[0]
+    if not await check_chat_permission(update.message.from_user.id, chat_id, context):
+        await update.message.reply_text(get_text("no_permission"))
+        return
 
-        # [修改] 使用异步查询
-        r = await execute_sql("SELECT title FROM chats WHERE chat_id=?", (chat_id,), fetchone=True)
-        title = r[0] if r else "未记录"
+    r = await execute_sql("SELECT title FROM chats WHERE chat_id=?", (chat_id,), fetchone=True)
+    title = r[0] if r else "未记录"
 
-        # [修改] 所有获取函数都必须加 await
-        rules = await get_rules(chat_id)
-        footer = await get_footer(chat_id)
-        replacements = await get_replacements(chat_id)
-        whitelisted_users = await get_chat_whitelist(chat_id)
-        quiet_mode = await get_quiet_mode(chat_id)
-        voting_on = await is_voting_enabled(chat_id)
-        triggers = await get_triggers(chat_id)
+    rules = await get_rules(chat_id)
+    footer = await get_footer(chat_id)
+    replacements = await get_replacements(chat_id)
+    whitelisted_users = await get_chat_whitelist(chat_id)
+    quiet_mode = await get_quiet_mode(chat_id)
+    voting_on = await is_voting_enabled(chat_id)
+    triggers = await get_triggers(chat_id)
 
-        q_map = {"off": "🔔 正常", "quiet": "🔕 静音", "autodel": "🔥 阅后即焚"}
-        q_status = q_map.get(quiet_mode, "🔔 正常")
-        v_status = "✅ 开启" if voting_on else "🚫 关闭"
-        safe_title = escape_markdown(title)
+    q_map = {"off": "🔔 正常", "quiet": "🔕 静音", "autodel": "🔥 阅后即焚"}
+    q_status = q_map.get(quiet_mode, "🔔 正常")
+    v_status = "✅ 开启" if voting_on else "🚫 关闭"
+    safe_title = escape_markdown(title)
 
-        details = f"• 规则：`{', '.join(rules) or '(未设置)'}`\n"
-        details += f"• 模式：{q_status}\n"
-        details += f"• 投票：{v_status}\n"
-        details += f"• 页脚：{'✅ 已设' if footer else '(无)'}\n"
-        details += f"• 替换：{len(replacements)} 个\n"
-        details += f"• 触发器：{len(triggers)} 个\n"
-        details += f"• 白名单：{len(whitelisted_users)} 人"
+    details = f"• 规则：`{', '.join(rules) or '(未设置)'}`\n"
+    details += f"• 模式：{q_status}\n"
+    details += f"• 投票：{v_status}\n"
+    details += f"• 页脚：{'✅ 已设' if footer else '(无)'}\n"
+    details += f"• 替换：{len(replacements)} 个\n"
+    details += f"• 触发器：{len(triggers)} 个\n"
+    details += f"• 白名单：{len(whitelisted_users)} 人"
 
-        await msg.reply_text(f"📍 *频道信息*\n\n🆔 ID：`{chat_id}`\n📛 名称：{safe_title}\n{details}", parse_mode="Markdown")
-    else:
-        await msg.reply_text("❌ 用法：/chatinfo -100频道ID")
+    await update.message.reply_text(f"📍 *频道信息*\n\n🆔 ID：`{chat_id}`\n📛 名称：{safe_title}\n{details}", parse_mode="Markdown")
 
-
+@admin_only
 async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if not msg or not await is_admin(msg): return
-
-    # [修改] 加 await
     rows = await get_stats()
-    uid = msg.from_user.id
+    uid = update.message.from_user.id
     allowed_rows = []
 
     if is_global_admin(uid):
         allowed_rows = rows
     else:
-        status_msg = await msg.reply_text("⏳ 正在获取统计数据...")
+        status_msg = await update.message.reply_text("⏳ 正在获取统计数据...")
         for cid, count in rows:
             if await check_chat_permission(uid, cid, context):
                 allowed_rows.append((cid, count))
         await status_msg.delete()
 
     if not allowed_rows:
-        await msg.reply_text("📭 暂无数据")
+        await update.message.reply_text(get_text("no_data"))
         return
 
     reply = "📊 *清理统计*：\n\n" + "\n".join(f"• `{cid}` → {count} 次" for cid, count in allowed_rows)
-    await msg.reply_text(reply.strip(), parse_mode="Markdown")
+    await update.message.reply_text(reply.strip(), parse_mode="Markdown")
 
-
+@admin_only
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.message
-    if not msg or not await is_admin(msg):
-        return
-
-    is_global = is_global_admin(msg.from_user.id)
+    is_global = is_global_admin(update.message.from_user.id)
     role = "固定管理员 (Super Admin)" if is_global else "频道管理员 (Chat Admin)"
     target_hint = " -100频道ID"
-
-    # [修改] 修复报错的核心：加 await
     min_s, max_s = await get_delay_settings()
     delay_status = f"{min_s}~{max_s}秒" if max_s > 0 else "关闭(实时)"
 
@@ -213,5 +184,4 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `/backupdb` — 📦 备份数据库
 `/restoredb` — 📥 恢复数据库
 """
-
-    await msg.reply_text(help_text.strip(), parse_mode="Markdown")
+    await update.message.reply_text(help_text.strip(), parse_mode="Markdown")

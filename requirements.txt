@@ -1,3 +1,4 @@
 python-telegram-bot[job-queue,rate-limiter]==20.7
-python-dotenv
-aiosqlite
+python-dotenv==1.0.0
+aiosqlite==0.19.0
+cachetools==5.3.3
