@@ -1,11 +1,10 @@
 # handlers/info.py
 # 信息查询命令：列表、详情、统计、帮助
 
-import sqlite3
 from telegram import Update
 from telegram.ext import ContextTypes
+# 引入 execute_sql 用于直接查询
 from db import (
-    DB_FILE,
     get_rules,
     get_footer,
     get_replacements,
@@ -14,7 +13,8 @@ from db import (
     get_quiet_mode,
     is_voting_enabled,
     get_triggers,
-    get_delay_settings
+    get_delay_settings,
+    execute_sql
 )
 from handlers.utils import is_global_admin, is_admin, check_chat_permission, escape_markdown
 
@@ -23,11 +23,8 @@ async def handle_listchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg or not await is_admin(msg): return
 
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
-    c.execute("SELECT chat_id, title FROM chats ORDER BY chat_id")
-    rows = c.fetchall()
-    conn.close()
+    # [修改] 使用异步 execute_sql 替代 sqlite3.connect
+    rows = await execute_sql("SELECT chat_id, title FROM chats ORDER BY chat_id", fetchall=True)
 
     if not rows:
         await msg.reply_text("📭 当前没有记录任何频道或群组。")
@@ -67,20 +64,18 @@ async def handle_chatinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await msg.reply_text("🚫 你没有权限查看该频道信息。")
             return
 
-        conn = sqlite3.connect(DB_FILE)
-        c = conn.cursor()
-        c.execute("SELECT title FROM chats WHERE chat_id=?", (chat_id,))
-        r = c.fetchone()
+        # [修改] 使用异步查询
+        r = await execute_sql("SELECT title FROM chats WHERE chat_id=?", (chat_id,), fetchone=True)
         title = r[0] if r else "未记录"
-        conn.close()
 
-        rules = get_rules(chat_id)
-        footer = get_footer(chat_id)
-        replacements = get_replacements(chat_id)
-        whitelisted_users = get_chat_whitelist(chat_id)
-        quiet_mode = get_quiet_mode(chat_id)
-        voting_on = is_voting_enabled(chat_id)
-        triggers = get_triggers(chat_id)
+        # [修改] 所有获取函数都必须加 await
+        rules = await get_rules(chat_id)
+        footer = await get_footer(chat_id)
+        replacements = await get_replacements(chat_id)
+        whitelisted_users = await get_chat_whitelist(chat_id)
+        quiet_mode = await get_quiet_mode(chat_id)
+        voting_on = await is_voting_enabled(chat_id)
+        triggers = await get_triggers(chat_id)
 
         q_map = {"off": "🔔 正常", "quiet": "🔕 静音", "autodel": "🔥 阅后即焚"}
         q_status = q_map.get(quiet_mode, "🔔 正常")
@@ -104,7 +99,8 @@ async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg or not await is_admin(msg): return
 
-    rows = get_stats()
+    # [修改] 加 await
+    rows = await get_stats()
     uid = msg.from_user.id
     allowed_rows = []
 
@@ -134,8 +130,8 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     role = "固定管理员 (Super Admin)" if is_global else "频道管理员 (Chat Admin)"
     target_hint = " -100频道ID"
 
-    # 获取当前的延迟设置用于展示
-    min_s, max_s = get_delay_settings()
+    # [修改] 修复报错的核心：加 await
+    min_s, max_s = await get_delay_settings()
     delay_status = f"{min_s}~{max_s}秒" if max_s > 0 else "关闭(实时)"
 
     help_text = f"""
@@ -202,7 +198,6 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ━━━━━━━━━━━━━━━━━━
 """
-    # 仅固定管理员可见的系统命令
     if is_global:
         help_text += f"""⚙️ *系统管理 (Super Admin)*
 `/setdelay min max` — ⏱ **设置转发延迟(秒)**

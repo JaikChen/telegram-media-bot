@@ -3,7 +3,7 @@
 
 import logging
 from datetime import time
-from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filters
+from telegram.ext import Application, MessageHandler, CallbackQueryHandler, filters, AIORateLimiter
 from config import BOT_TOKEN
 from db import init_db, clean_expired_data, vacuum_db
 
@@ -44,8 +44,9 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
-# 屏蔽 httpx 的详细日志，避免刷屏
+# 屏蔽 httpx 和 aiosqlite 的详细日志，避免刷屏
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
 
 # ----------------------------------------------------
@@ -53,19 +54,29 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # ----------------------------------------------------
 async def daily_maintenance(context):
     print("⏳ [System] 执行每日维护任务...")
-    # 清理 365 天前的过期数据
-    deleted = clean_expired_data(days=365)
+    # 清理 3650 天前的过期数据
+    deleted = await clean_expired_data(days=3650)
     # 整理数据库文件碎片
-    vacuum_db()
+    await vacuum_db()
     print(f"✅ [System] 维护完成，清理了 {deleted} 条过期记录。")
+
+async def post_init(application):
+    """启动前初始化数据库"""
+    print("⏳ [System] 正在初始化异步数据库...")
+    await init_db()
+    print("✅ [System] 数据库就绪。")
 
 
 def main():
-    # 1. 初始化数据库结构
-    init_db()
-
     # 2. 构建 Bot 应用
-    app = Application.builder().token(BOT_TOKEN).build()
+    # 启用 AIORateLimiter 防止 429 错误
+    app = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .rate_limiter(AIORateLimiter(overall_max_rate=30, overall_time_period=1))
+        .post_init(post_init)
+        .build()
+    )
 
     # =========================
     # 注册命令处理器 (Handlers)
