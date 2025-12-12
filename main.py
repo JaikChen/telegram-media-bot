@@ -5,10 +5,13 @@ import logging
 from datetime import time
 from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQueryHandler, filters, AIORateLimiter
 from config import BOT_TOKEN
-from db import init_db, clean_expired_data, vacuum_db, init_db_connection, close_db_connection
+from db import (
+    init_db, clean_expired_data, vacuum_db, init_db_connection, close_db_connection,
+    peek_forward_queue  # [新增] 用于检查是否有积压
+)
 
 # 导入各模块 Handler
-from handlers.media import handle_media
+from handlers.media import handle_media, forward_worker  # [新增] 导入转发Worker
 from handlers.callback import handle_vote_callback
 from handlers.message import handle_text_message
 
@@ -34,7 +37,7 @@ from handlers.chat_mgmt import (
 )
 
 from handlers.info import (
-    handle_listchats, handle_chatinfo, handle_stats, handle_help, handle_queue_status # [修改] 导入新handler
+    handle_listchats, handle_chatinfo, handle_stats, handle_help, handle_queue_status
 )
 
 # ----------------------------------------------------
@@ -54,18 +57,29 @@ logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 # ----------------------------------------------------
 async def daily_maintenance(context):
     print("⏳ [System] 执行每日维护任务...")
-    # 清理 3650 天前的过期数据
-    deleted = await clean_expired_data(days=3650)
+    # 清理 365 天前的过期数据
+    deleted = await clean_expired_data(days=365)
     # 整理数据库文件碎片
     await vacuum_db()
     print(f"✅ [System] 维护完成，清理了 {deleted} 条过期记录。")
 
+
 async def post_init(application):
-    """启动前初始化数据库"""
+    """启动前初始化"""
     print("⏳ [System] 正在初始化数据库连接...")
     await init_db_connection()
     await init_db()
     print("✅ [System] 数据库就绪。")
+
+    # [新增] 启动时检查是否有中断的转发任务
+    print("🔍 [System] 检查积压转发队列...")
+    if await peek_forward_queue():
+        print("🔄 [System] 发现未完成的转发任务，正在恢复转发队列...")
+        # 立即启动 Worker，延时 1 秒给 Bot 缓冲时间
+        application.job_queue.run_once(forward_worker, 1, name="forward_worker")
+    else:
+        print("✅ [System] 转发队列为空。")
+
 
 async def post_shutdown(application):
     """关闭时清理"""
@@ -154,7 +168,7 @@ def main():
     app.add_handler(CommandHandler("chatinfo", handle_chatinfo))
     app.add_handler(CommandHandler("stats", handle_stats))
     app.add_handler(CommandHandler("help", handle_help))
-    app.add_handler(CommandHandler("queue", handle_queue_status)) # [新增]
+    app.add_handler(CommandHandler("queue", handle_queue_status))
 
     # =========================
     # 逻辑处理器 (Logic Handlers)
@@ -176,7 +190,7 @@ def main():
     if app.job_queue:
         # 每天 UTC 04:00 (北京时间 12:00) 执行数据库清理
         app.job_queue.run_daily(daily_maintenance, time=time(4, 0, 0))
-        print("⏰ 已设置每日 03:06 自动清理任务")
+        print("⏰ 已设置每日 04:00 自动清理任务")
 
     print("🚀 Bot 已启动，正在运行中...")
     app.run_polling()
