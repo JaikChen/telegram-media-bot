@@ -110,32 +110,20 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     min_s, max_s = await get_delay_settings()
     delay_status = f"{min_s}~{max_s}秒" if max_s > 0 else "关闭(实时)"
 
+    # 基础帮助内容
     help_text = f"""
 🤖 *Jaikcl_Bot 全能手册*
 👤 身份：`{role}`
 ⏱ 全局延迟：`{delay_status}`
 
-💡 *提示*：点击命令可复制，请将 `{target_hint}` 替换为真实ID。
-
-━━━━━━━━━━━━━━━━━━
-🛠 **内容净化与增强 (Content)**
-*🔑 关键词屏蔽* (支持批量/正则)
-`/addkw`{target_hint} `词1 词2 ...` — ➕ 批量添加
-`/addkw`{target_hint} `... regex` — 🧩 启用正则模式
-`/addkw all ...` — 🌐 **全群添加** (仅超管)
-`/delkw`{target_hint} `词` — ➖ 删除屏蔽
-`/listkw`{target_hint} — 📜 查看列表
-
-*🔄 替换 & 页脚 & 白名单*
-`/addreplace`{target_hint} `旧 新` — ➕ 文本替换
-`/delreplace`{target_hint} `旧` — ➖ 删除替换
-`/setfooter`{target_hint} `内容` — 📝 设置小尾巴
-`/delfooter`{target_hint} — 🗑 删除页脚
-`/allowuser`{target_hint} `ID` — 🛡 用户白名单(免清理)
-`/blockuser`{target_hint} `ID` — 🚫 移出白名单
+💡 *使用小贴士*：
+1. 点击蓝色命令即可复制。
+2. 将 `{target_hint}` 替换为真实的频道 ID。
+3. 🔥 **超级管理员**可将 ID 填为 `all`，对**所有**已记录频道进行批量操作！
 
 ━━━━━━━━━━━━━━━━━━
 🧩 **规则配置 (Rules)**
+_(支持 `all` 批量操作)_
 `/setrules`{target_hint} `规则...` — ⚡️ 覆盖设置
 `/addrule`{target_hint} `规则` — ➕ 添加单条
 `/delrule`{target_hint} `规则` — ➖ 删除单条
@@ -152,7 +140,23 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 `maxlen:50`: 限制长度
 
 ━━━━━━━━━━━━━━━━━━
-🎮 **控制与交互 (Control)**
+🛠 **内容净化与增强**
+_(支持 `all` 批量操作)_
+`/addkw`{target_hint} `词1 词2 ...` — ➕ 批量添加屏蔽词
+`/addkw`{target_hint} `... regex` — 🧩 启用正则模式
+`/delkw`{target_hint} `词` — ➖ 删除屏蔽词
+`/listkw`{target_hint} — 📜 查看列表
+
+*🔄 替换 & 页脚 & 白名单*
+`/addreplace`{target_hint} `旧 新` — ➕ 文本替换
+`/delreplace`{target_hint} `旧` — ➖ 删除替换
+`/setfooter`{target_hint} `内容` — 📝 设置小尾巴
+`/delfooter`{target_hint} — 🗑 删除页脚
+`/allowuser`{target_hint} `ID` — 🛡 用户白名单(免清理)
+`/blockuser`{target_hint} `ID` — 🚫 移出白名单
+
+━━━━━━━━━━━━━━━━━━
+🎮 **控制与交互**
 `/setquiet`{target_hint} `[off/quiet/autodel]` — 🔕 回复模式
 `/setvoting`{target_hint} `[on/off]` — 👍 互动投票开关
 `/lock`{target_hint} — 🔒 锁定(暂停Bot)
@@ -167,13 +171,14 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 发送媒体说明中包含 `#spoiler` / `#剧透` / `#nsfw` 即可自动打码。
 
 ━━━━━━━━━━━━━━━━━━
-🔁 **转发设置 (Forward)**
+🔁 **转发设置**
 `/addforward` -100源 -100目标 — ✅ 建立转发
 `/delforward` -100源 -100目标 — ❌ 解除转发
 `/listforward` -100源 — 📋 查看转发链
 
 ━━━━━━━━━━━━━━━━━━
 """
+    # 超级管理员专属菜单
     if is_global:
         help_text += f"""⚙️ *系统管理 (Super Admin)*
 `/setdelay min max` — ⏱ **设置转发延迟(秒)**
