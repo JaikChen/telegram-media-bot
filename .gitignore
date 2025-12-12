@@ -4,8 +4,6 @@
 bot.db
 update-bot.sh
 update-local.sh
-清除仓库历史.sh
-
 /handlers/__pycache__
-/__pycache__
-/handlers/__pycache__
+*.db-shm
+*.db-wal
