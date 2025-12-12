@@ -5,7 +5,7 @@ from db import (
     get_rules, get_footer, get_replacements, get_stats,
     get_chat_whitelist, get_quiet_mode, is_voting_enabled,
     get_triggers, get_delay_settings, execute_sql,
-    get_forward_queue_counts  # [修改] 引入新函数
+    get_forward_queue_counts
 )
 from handlers.utils import admin_only, is_global_admin, check_chat_permission, escape_markdown
 from locales import get_text
@@ -103,10 +103,8 @@ async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply.strip(), parse_mode="Markdown")
 
 
-# [新增] 队列查看
 @admin_only
 async def handle_queue_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 仅超级管理员可查看（因为包含所有频道）
     if not is_global_admin(update.message.from_user.id):
         await update.message.reply_text(get_text("no_permission"))
         return
@@ -196,18 +194,19 @@ _(支持 `all` 批量操作)_
 `/addforward` -100源 -100目标 — ✅ 建立转发
 `/delforward` -100源 -100目标 — ❌ 解除转发
 `/listforward` -100源 — 📋 查看转发链
-`/queue` — 📊 **查看积压队列** (新增)
+`/queue` — 📊 **查看积压队列** (实时监控)
 
 ━━━━━━━━━━━━━━━━━━
 """
     if is_global:
         help_text += f"""⚙️ *系统管理 (Super Admin)*
-`/setdelay min max` — ⏱ **设置转发延迟(秒)**
+`/pause` — ⏸ **暂停转发** (积压保留)
+`/resume` — ▶️ **恢复转发** (处理积压)
+`/setdelay min max` — ⏱ **设置延迟(秒)**
 `/setlog`{target_hint} — 📝 设置日志频道
-`/setlogfilter` — ⚖️ 过滤日志类型
-`/dellog` — 📴 关闭日志
-`/cleanchats` — 🧹 清理无效群组数据
-`/cleandb` — 💾 数据库维护(VACUUM)
+`/setlogfilter` — ⚖️ 过滤日志
+`/cleanchats` — 🧹 清理无效群组
+`/cleandb` — 💾 数据库维护
 `/leave`{target_hint} — 👋 强制退群
 `/addadmin ID` — ➕ 添加动态管理员
 `/deladmin ID` — ➖ 删除动态管理员

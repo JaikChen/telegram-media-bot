@@ -8,6 +8,7 @@ from config import ADMIN_IDS, DB_FILE
 from db import *
 from handlers.utils import is_global_admin, log_event, escape_markdown, admin_only
 from locales import get_text
+from handlers.media import forward_worker  # [新增] 导入Worker以进行恢复
 
 
 @admin_only
@@ -66,7 +67,8 @@ async def handle_restoredb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tmp = io.BytesIO()
     await file.download_to_memory(out=tmp)
     tmp.seek(0)
-    with open(DB_FILE, "wb") as f: f.write(tmp.read())
+    with open(DB_FILE, "wb") as f:
+        f.write(tmp.read())
     await msg.reply_text(get_text("restore_success"))
     await log_event(context.bot, "管理员执行了数据库恢复", category="system")
 
@@ -187,3 +189,28 @@ async def handle_setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                             parse_mode="Markdown")
     else:
         await update.message.reply_text("❌ 用法：`/setdelay min max` (单位秒，0 0 关闭)", parse_mode="Markdown")
+
+
+# [新增] 暂停与恢复处理
+@admin_only
+async def handle_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_global_admin(update.message.from_user.id):
+        await update.message.reply_text(get_text("no_permission"))
+        return
+    await set_forward_paused(True)
+    await update.message.reply_text(get_text("queue_paused"), parse_mode="Markdown")
+
+
+@admin_only
+async def handle_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_global_admin(update.message.from_user.id):
+        await update.message.reply_text(get_text("no_permission"))
+        return
+
+    await set_forward_paused(False)
+    await update.message.reply_text(get_text("queue_resumed"), parse_mode="Markdown")
+
+    # 尝试唤醒 Worker
+    if await peek_forward_queue():
+        if not context.job_queue.get_jobs_by_name("forward_worker"):
+            context.job_queue.run_once(forward_worker, 1, name="forward_worker")

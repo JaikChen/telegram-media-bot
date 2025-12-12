@@ -36,6 +36,7 @@
 * **自动防剧透**: 发送带 `#spoiler` / `#剧透` / `#nsfw` 的媒体时，Bot 自动打码并重新发送。
 
 ### ⚙️ **企业级运维**
+* **队列管理**: 支持 **查看积压**、**手动暂停/恢复** 转发任务，灵活应对突发流量。
 * **日志中心**: 将清理、转发、错误日志推送到指定频道，支持按类型过滤。
 * **自动维护**: 每日凌晨自动清理过期数据（保留 1 年）并压缩数据库 (VACUUM)。
 * **数据库灾备**: 支持一键热备份 (`/backupdb`) 和热恢复 (`/restoredb`)。
@@ -84,7 +85,7 @@
     python -m venv .venv
     source .venv/bin/activate  # Windows 使用 .venv\Scripts\activate
     
-    # 注意：如遇版本冲突，请使用以下命令强制重装
+    # 强制安装兼容版本
     pip install -r requirements.txt --force-reinstall
     ```
 3.  **启动**:
@@ -151,10 +152,16 @@
 * `/addforward -100源ID -100目标ID`：建立转发关系。
 * `/delforward -100源ID -100目标ID`：解除关系。
 * `/listforward -100源ID`：查看转发链。
-* `/setdelay min max`：(超管指令) 设置随机延迟转发时间（秒），模拟人工操作。
+* `/queue`：📊 **查看当前转发积压状态**。
 
 ### 5. ⚙️ 系统管理 (Super Admin)
 
+> ⚠️ 仅限 `.env` 中配置的 `ADMIN_IDS` 用户使用。
+
+* **转发控制**:
+    * `/pause`：⏸ **暂停转发**（积压消息保留在数据库）。
+    * `/resume`：▶️ **恢复转发**（继续处理积压）。
+    * `/setdelay min max`：设置随机延迟转发时间（秒）。
 * **日志系统**:
     * `/setlog -100日志频道ID`：设置日志输出频道。
     * `/setlogfilter clean error`：过滤日志类型。
@@ -183,9 +190,10 @@ telegram-media-bot/
     ├── media.py          # 媒体处理 (去重/转发/相册)
     ├── chat_mgmt.py      # 群组管理指令
     ├── sys_admin.py      # 系统级指令
+    ├── info.py           # 信息与队列查询
     ├── utils.py          # 通用工具 & 鉴权装饰器
     └── ...
-
 ```
 📄 License
+
 MIT License.

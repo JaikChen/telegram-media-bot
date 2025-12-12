@@ -7,11 +7,11 @@ from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQu
 from config import BOT_TOKEN
 from db import (
     init_db, clean_expired_data, vacuum_db, init_db_connection, close_db_connection,
-    peek_forward_queue  # [新增] 用于检查是否有积压
+    peek_forward_queue
 )
 
 # 导入各模块 Handler
-from handlers.media import handle_media, forward_worker  # [新增] 导入转发Worker
+from handlers.media import handle_media, forward_worker
 from handlers.callback import handle_vote_callback
 from handlers.message import handle_text_message
 
@@ -20,7 +20,7 @@ from handlers.sys_admin import (
     handle_backupdb, handle_restoredb,
     handle_setlog, handle_dellog, handle_setlogfilter,
     handle_cleanchats, handle_cleandb, handle_leave,
-    handle_setdelay
+    handle_setdelay, handle_pause, handle_resume  # [新增]
 )
 
 from handlers.chat_mgmt import (
@@ -75,7 +75,6 @@ async def post_init(application):
     print("🔍 [System] 检查积压转发队列...")
     if await peek_forward_queue():
         print("🔄 [System] 发现未完成的转发任务，正在恢复转发队列...")
-        # 立即启动 Worker，延时 1 秒给 Bot 缓冲时间
         application.job_queue.run_once(forward_worker, 1, name="forward_worker")
     else:
         print("✅ [System] 转发队列为空。")
@@ -120,6 +119,8 @@ def main():
     app.add_handler(CommandHandler("cleandb", handle_cleandb))
     app.add_handler(CommandHandler("leave", handle_leave))
     app.add_handler(CommandHandler("setdelay", handle_setdelay))
+    app.add_handler(CommandHandler("pause", handle_pause))  # [新增]
+    app.add_handler(CommandHandler("resume", handle_resume))  # [新增]
 
     # --- 群组管理 (Chat Management) ---
     # 规则

@@ -9,7 +9,7 @@ from db import (
     get_forward_targets, add_forward_seen,
     has_album_forwarded, mark_album_forwarded, is_voting_enabled,
     enqueue_forward, peek_forward_queue, pop_forward_single, pop_forward_group,
-    get_delay_settings
+    get_delay_settings, is_forward_paused  # [新增]
 )
 from cleaner import clean_caption, check_spoiler_tags, restore_all_tags
 from handlers.callback import get_vote_markup
@@ -21,6 +21,10 @@ album_cache = TTLCache(maxsize=1000, ttl=600)
 
 
 async def forward_worker(context: ContextTypes.DEFAULT_TYPE):
+    # [新增] 检查全局暂停开关
+    if await is_forward_paused():
+        return
+
     row = await peek_forward_queue()
     if not row: return
     row_id, target_id, media_type, file_id, caption, has_spoiler, file_unique_id, group_id, _ = row

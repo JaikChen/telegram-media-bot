@@ -388,9 +388,8 @@ async def set_log_filter(v): await execute_sql("INSERT OR REPLACE INTO settings 
                                                (",".join(v),), commit=True)
 
 
-# [新增] 统计队列情况
 async def get_forward_queue_counts():
-    """获取转发队列统计：按目标频道分组"""
+    """获取转发队列统计"""
     sql = """
         SELECT f.target_chat_id, c.title, COUNT(*) 
         FROM forward_queue f 
@@ -399,3 +398,14 @@ async def get_forward_queue_counts():
         ORDER BY COUNT(*) DESC
     """
     return await execute_sql(sql, fetchall=True)
+
+
+# [新增] 暂停/恢复状态管理
+async def is_forward_paused():
+    r = await execute_sql("SELECT value FROM settings WHERE key='forward_paused'", fetchone=True)
+    return r is not None and r[0] == '1'
+
+
+async def set_forward_paused(paused: bool):
+    val = '1' if paused else '0'
+    await execute_sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('forward_paused', ?)", (val,), commit=True)
