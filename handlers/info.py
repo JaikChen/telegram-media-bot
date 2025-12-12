@@ -9,6 +9,7 @@ from db import (
 from handlers.utils import admin_only, is_global_admin, check_chat_permission, escape_markdown
 from locales import get_text
 
+
 @admin_only
 async def handle_listchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rows = await execute_sql("SELECT chat_id, title FROM chats ORDER BY chat_id", fetchall=True)
@@ -38,10 +39,11 @@ async def handle_listchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply += f"• `{chat_id}` → {safe_title}\n"
     await update.message.reply_text(reply.strip(), parse_mode="Markdown")
 
+
 @admin_only
 async def handle_chatinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 1:
-        await update.message.reply_text(get_text("args_error"))
+        await update.message.reply_text("❌ 用法：`/chatinfo -100xxx`", parse_mode="Markdown")
         return
 
     chat_id = context.args[0]
@@ -73,7 +75,9 @@ async def handle_chatinfo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     details += f"• 触发器：{len(triggers)} 个\n"
     details += f"• 白名单：{len(whitelisted_users)} 人"
 
-    await update.message.reply_text(f"📍 *频道信息*\n\n🆔 ID：`{chat_id}`\n📛 名称：{safe_title}\n{details}", parse_mode="Markdown")
+    await update.message.reply_text(f"📍 *频道信息*\n\n🆔 ID：`{chat_id}`\n📛 名称：{safe_title}\n{details}",
+                                    parse_mode="Markdown")
+
 
 @admin_only
 async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -96,6 +100,7 @@ async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     reply = "📊 *清理统计*：\n\n" + "\n".join(f"• `{cid}` → {count} 次" for cid, count in allowed_rows)
     await update.message.reply_text(reply.strip(), parse_mode="Markdown")
+
 
 @admin_only
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):

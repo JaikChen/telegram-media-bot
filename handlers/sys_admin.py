@@ -9,6 +9,7 @@ from db import *
 from handlers.utils import is_global_admin, log_event, escape_markdown, admin_only
 from locales import get_text
 
+
 @admin_only
 async def handle_addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_global_admin(update.message.from_user.id): return
@@ -18,6 +19,7 @@ async def handle_addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await add_admin(context.args[0])
     await update.message.reply_text(get_text("admin_added", context.args[0]))
     await log_event(context.bot, f"添加管理员: {context.args[0]}", category="system")
+
 
 @admin_only
 async def handle_deladmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -29,6 +31,7 @@ async def handle_deladmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(get_text("admin_deleted", context.args[0]))
     await log_event(context.bot, f"移除管理员: {context.args[0]}", category="system")
 
+
 @admin_only
 async def handle_listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_global_admin(update.message.from_user.id): return
@@ -38,14 +41,18 @@ async def handle_listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply += "\n\n• 动态：\n" + ("\n".join(f" - {a}" for a in admins) if admins else " - (空)")
     await update.message.reply_text(reply)
 
+
 @admin_only
 async def handle_backupdb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_global_admin(update.message.from_user.id): return
     if not os.path.exists(DB_FILE):
         await update.message.reply_text("❌ 无数据库")
         return
-    await context.bot.send_document(chat_id=update.message.chat_id, document=InputFile(open(DB_FILE, "rb"), filename=os.path.basename(DB_FILE)), caption=get_text("backup_caption"))
+    await context.bot.send_document(chat_id=update.message.chat_id,
+                                    document=InputFile(open(DB_FILE, "rb"), filename=os.path.basename(DB_FILE)),
+                                    caption=get_text("backup_caption"))
     await log_event(context.bot, "管理员执行了数据库备份", category="system")
+
 
 @admin_only
 async def handle_restoredb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -63,14 +70,20 @@ async def handle_restoredb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await msg.reply_text(get_text("restore_success"))
     await log_event(context.bot, "管理员执行了数据库恢复", category="system")
 
+
 @admin_only
 async def handle_setlog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_global_admin(update.message.from_user.id): return
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/setlog -100xxx`", parse_mode="Markdown")
+        return
     await set_log_channel(context.args[0])
     await update.message.reply_text(get_text("log_set", context.args[0]), parse_mode="Markdown")
-    try: await context.bot.send_message(context.args[0], "📡 测试消息")
-    except Exception as e: await update.message.reply_text(f"⚠️ 无法发送测试消息: {e}")
+    try:
+        await context.bot.send_message(context.args[0], "📡 测试消息")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ 无法发送测试消息: {e}")
+
 
 @admin_only
 async def handle_dellog(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -78,13 +91,15 @@ async def handle_dellog(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await set_log_channel("")
     await update.message.reply_text(get_text("log_off"))
 
+
 @admin_only
 async def handle_setlogfilter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_global_admin(update.message.from_user.id): return
     valid_types = ['clean', 'duplicate', 'forward', 'error', 'system']
     if len(context.args) < 1:
         current = await get_log_filter()
-        await update.message.reply_text(f"📝 当前日志过滤：\n`{', '.join(current)}`\n\n可用类型：`{' '.join(valid_types)}`", parse_mode="Markdown")
+        await update.message.reply_text(
+            f"📝 当前日志过滤：\n`{', '.join(current)}`\n\n可用类型：`{' '.join(valid_types)}`", parse_mode="Markdown")
         return
     new_types = [t for t in context.args if t in valid_types]
     if not new_types:
@@ -92,6 +107,7 @@ async def handle_setlogfilter(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     await set_log_filter(new_types)
     await update.message.reply_text(f"✅ 日志过滤已更新：\n`{', '.join(new_types)}`", parse_mode="Markdown")
+
 
 @admin_only
 async def handle_cleanchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,18 +120,21 @@ async def handle_cleanchats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     count = 0
     details = []
     for cid, title in rows:
-        try: await context.bot.get_chat(cid)
+        try:
+            await context.bot.get_chat(cid)
         except (BadRequest, Forbidden):
             await delete_chat_data(cid)
             count += 1
             safe_title = escape_markdown(title or '未命名')
             details.append(f"`{cid}` {safe_title}")
-        except Exception: pass
+        except Exception:
+            pass
     if count > 0:
         await status_msg.edit_text(f"✅ 清理了 {count} 个无效群组：\n" + "\n".join(details), parse_mode="Markdown")
         await log_event(context.bot, f"清理了 {count} 个无效群组", category="system")
     else:
         await status_msg.edit_text("✅ 无无效群组")
+
 
 @admin_only
 async def handle_cleandb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -126,15 +145,20 @@ async def handle_cleandb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(get_text("maintenance_complete", deleted))
     await log_event(context.bot, f"手动执行数据库维护，清理 {deleted} 条记录", category="system")
 
+
 @admin_only
 async def handle_leave(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_global_admin(update.message.from_user.id): return
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/leave -100xxx`", parse_mode="Markdown")
+        return
     try:
         await context.bot.leave_chat(context.args[0])
         await update.message.reply_text(f"👋 已退出 `{context.args[0]}`", parse_mode="Markdown")
         await log_event(context.bot, f"强制退出群组: {context.args[0]}", category="system")
-    except Exception as e: await update.message.reply_text(f"❌ 失败: {e}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ 失败: {e}")
+
 
 @admin_only
 async def handle_setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -159,6 +183,7 @@ async def handle_setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(f"✅ 已设置转发延迟：**{min_s} ~ {max_s} 秒**", parse_mode="Markdown")
                 await log_event(context.bot, f"更新转发延迟为 {min_s}-{max_s}s", category="system")
         except ValueError:
-            await update.message.reply_text("❌ 错误：请输入有效的整数，且 min <= max。\n示例：`/setdelay 60 120`", parse_mode="Markdown")
+            await update.message.reply_text("❌ 错误：请输入有效的整数，且 min <= max。\n示例：`/setdelay 60 120`",
+                                            parse_mode="Markdown")
     else:
         await update.message.reply_text("❌ 用法：`/setdelay min max` (单位秒，0 0 关闭)", parse_mode="Markdown")

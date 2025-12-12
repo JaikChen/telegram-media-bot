@@ -9,7 +9,6 @@ from locales import get_text
 
 @admin_only
 async def handle_setquiet(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # 使用 context.args 替代 msg.text.split
     if len(context.args) < 2:
         await update.message.reply_text(get_text("quiet_usage"), parse_mode="Markdown")
         return
@@ -49,11 +48,10 @@ async def handle_setvoting(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @admin_only
 async def handle_setrules(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
-        await update.message.reply_text("❌ 用法：`/setrules -100xxx 规则1,规则2...`")
+        await update.message.reply_text("❌ 用法：`/setrules -100xxx 规则1,规则2...`", parse_mode="Markdown")
         return
 
     chat_id = context.args[0]
-    # 合并剩余参数以支持规则间的空格
     rule_str = " ".join(context.args[1:])
     rule_list = [r.strip() for r in rule_str.split(",") if r.strip()]
 
@@ -67,7 +65,9 @@ async def handle_setrules(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_addrule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/addrule -100xxx <规则>`", parse_mode="Markdown")
+        return
     chat_id, rule = context.args[0], " ".join(context.args[1:])
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await add_rule(chat_id, rule)
@@ -76,7 +76,9 @@ async def handle_addrule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_delrule(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/delrule -100xxx <规则>`", parse_mode="Markdown")
+        return
     chat_id, rule = context.args[0], " ".join(context.args[1:])
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await delete_rule(chat_id, rule)
@@ -85,7 +87,9 @@ async def handle_delrule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_listrules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/listrules -100xxx`", parse_mode="Markdown")
+        return
     chat_id = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     rules = await get_rules(chat_id)
@@ -94,7 +98,9 @@ async def handle_listrules(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_clearrules(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/clearrules -100xxx`", parse_mode="Markdown")
+        return
     chat_id = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await clear_rules(chat_id)
@@ -104,7 +110,7 @@ async def handle_clearrules(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @admin_only
 async def handle_addkw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 2:
-        await update.message.reply_text(get_text("args_error") + "\n示例: `/addkw -100xxx 关键词`")
+        await update.message.reply_text(get_text("args_error") + "\n示例: `/addkw -100xxx 关键词`", parse_mode="Markdown")
         return
 
     target_input = context.args[0]
@@ -144,7 +150,9 @@ async def handle_addkw(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_listkw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/listkw -100xxx`", parse_mode="Markdown")
+        return
     chat_id = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     kws = await get_keywords(chat_id)
@@ -154,7 +162,9 @@ async def handle_listkw(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_delkw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/delkw -100xxx <关键词>`", parse_mode="Markdown")
+        return
     chat_id, kw = context.args[0], context.args[1]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await delete_keyword(chat_id, kw)
@@ -163,7 +173,9 @@ async def handle_delkw(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_addreplace(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 3: return
+    if len(context.args) < 3:
+        await update.message.reply_text("❌ 用法：`/addreplace -100xxx <旧词> <新词>`", parse_mode="Markdown")
+        return
     chat_id, old, new = context.args[0], context.args[1], context.args[2]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await add_replacement(chat_id, old, new)
@@ -172,7 +184,9 @@ async def handle_addreplace(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_delreplace(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/delreplace -100xxx <旧词>`", parse_mode="Markdown")
+        return
     chat_id, old = context.args[0], context.args[1]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await delete_replacement(chat_id, old)
@@ -181,7 +195,9 @@ async def handle_delreplace(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_listreplace(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/listreplace -100xxx`", parse_mode="Markdown")
+        return
     chat_id = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     reps = await get_replacements(chat_id)
@@ -191,7 +207,9 @@ async def handle_listreplace(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 @admin_only
 async def handle_setfooter(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/setfooter -100xxx <内容>`", parse_mode="Markdown")
+        return
     chat_id, text = context.args[0], " ".join(context.args[1:])
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await set_footer(chat_id, text)
@@ -200,7 +218,9 @@ async def handle_setfooter(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_delfooter(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/delfooter -100xxx`", parse_mode="Markdown")
+        return
     chat_id = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await delete_footer(chat_id)
@@ -209,7 +229,9 @@ async def handle_delfooter(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_lock(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/lock -100xxx`", parse_mode="Markdown")
+        return
     chat_id = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await lock_chat(chat_id)
@@ -218,7 +240,9 @@ async def handle_lock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/unlock -100xxx`", parse_mode="Markdown")
+        return
     chat_id = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await unlock_chat(chat_id)
@@ -227,7 +251,9 @@ async def handle_unlock(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/preview -100xxx <测试文本>`", parse_mode="Markdown")
+        return
     chat_id, text = context.args[0], " ".join(context.args[1:])
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     cleaned = await clean_caption(text, chat_id, update.message.from_user.id, update.message.entities)
@@ -236,7 +262,9 @@ async def handle_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_addforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/addforward -100源ID -100目标ID`", parse_mode="Markdown")
+        return
     source, target = context.args[0], context.args[1]
     if not await check_chat_permission(update.message.from_user.id, source, context): return
     await add_forward(source, target)
@@ -245,7 +273,9 @@ async def handle_addforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_delforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/delforward -100源ID -100目标ID`", parse_mode="Markdown")
+        return
     source, target = context.args[0], context.args[1]
     if not await check_chat_permission(update.message.from_user.id, source, context): return
     await del_forward(source, target)
@@ -254,7 +284,9 @@ async def handle_delforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_listforward(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/listforward -100xxx`", parse_mode="Markdown")
+        return
     source = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, source, context): return
     tgts = await list_forward(source)
@@ -264,7 +296,9 @@ async def handle_listforward(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 @admin_only
 async def handle_allowuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/allowuser -100xxx <用户ID>`", parse_mode="Markdown")
+        return
     chat_id, uid = context.args[0], context.args[1]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await add_user_whitelist(chat_id, uid)
@@ -273,7 +307,9 @@ async def handle_allowuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_blockuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法：`/blockuser -100xxx <用户ID>`", parse_mode="Markdown")
+        return
     chat_id, uid = context.args[0], context.args[1]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await del_user_whitelist(chat_id, uid)
@@ -282,7 +318,9 @@ async def handle_blockuser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_listallowed(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法：`/listallowed -100xxx`", parse_mode="Markdown")
+        return
     chat_id = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     users = await get_chat_whitelist(chat_id)
@@ -303,7 +341,9 @@ async def handle_addtrigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_deltrigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 2: return
+    if len(context.args) < 2:
+        await update.message.reply_text("❌ 用法: `/deltrigger -100xxx 关键词`", parse_mode="Markdown")
+        return
     chat_id, kw = context.args[0], context.args[1].lower()
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     await del_trigger(chat_id, kw)
@@ -312,7 +352,9 @@ async def handle_deltrigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 @admin_only
 async def handle_listtriggers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 1: return
+    if len(context.args) < 1:
+        await update.message.reply_text("❌ 用法: `/listtriggers -100xxx`", parse_mode="Markdown")
+        return
     chat_id = context.args[0]
     if not await check_chat_permission(update.message.from_user.id, chat_id, context): return
     triggers = await get_triggers(chat_id)
