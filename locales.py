@@ -51,6 +51,11 @@ MESSAGES = {
     "log_set": "✅ 日志频道已设为：`{}`",
     "log_off": "📴 日志已关闭。",
     "maintenance_complete": "✅ 维护完成：清理 {} 条记录，数据库已压缩。",
+
+    # [新增] 队列状态
+    "queue_status_title": "📊 *当前转发队列积压情况*",
+    "queue_row": "• `{}` ({}) → **{}** 条待发",
+    "queue_empty": "🎉 *队列空闲*：当前没有待转发的消息。",
 }
 
 

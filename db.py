@@ -81,31 +81,31 @@ async def init_db():
 
 
 async def execute_sql(sql: str, args: tuple = (), fetchone=False, fetchall=False, commit=False):
-    """通用执行函数，复用全局连接"""
+    """
+    通用执行函数，复用全局连接
+    [修复] 使用 context manager 自动关闭 cursor，防止资源泄漏
+    """
     async with db_lock:
         db = await get_db()
-        cursor = await db.execute(sql, args)
-        if commit:
-            await db.commit()
+        async with db.execute(sql, args) as cursor:
+            if commit:
+                await db.commit()
 
-        res = None
-        if fetchone:
-            res = await cursor.fetchone()
-        elif fetchall:
-            res = await cursor.fetchall()
-
-        # 注意：使用长连接时不应该关闭 cursor，除非显式需要，aiosqlite 会自动处理
-        return res
+            if fetchone:
+                return await cursor.fetchone()
+            if fetchall:
+                return await cursor.fetchall()
+            return None
 
 
-# --- 业务逻辑 (保持原有接口不变，底层已走连接池) ---
+# --- 业务逻辑 ---
 async def clean_expired_data(days: int = 365) -> int:
     expire_time = int(time.time()) - (days * 86400)
     async with db_lock:
         db = await get_db()
-        cursor = await db.execute("DELETE FROM seen WHERE created_at > 0 AND created_at < ?", (expire_time,))
-        await db.commit()
-        return cursor.rowcount
+        async with db.execute("DELETE FROM seen WHERE created_at > 0 AND created_at < ?", (expire_time,)) as cursor:
+            await db.commit()
+            return cursor.rowcount
 
 
 async def vacuum_db():
@@ -127,7 +127,7 @@ async def delete_chat_data(chat_id: str):
         await db.commit()
 
 
-# --- 简单封装的 CRUD (代码与之前类似，但底层已优化) ---
+# --- CRUD 操作 ---
 async def add_seen(chat_id, fid):
     try:
         await execute_sql("INSERT INTO seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
@@ -386,3 +386,16 @@ async def get_log_filter():
 
 async def set_log_filter(v): await execute_sql("INSERT OR REPLACE INTO settings (key, value) VALUES ('log_filter', ?)",
                                                (",".join(v),), commit=True)
+
+
+# [新增] 统计队列情况
+async def get_forward_queue_counts():
+    """获取转发队列统计：按目标频道分组"""
+    sql = """
+        SELECT f.target_chat_id, c.title, COUNT(*) 
+        FROM forward_queue f 
+        LEFT JOIN chats c ON f.target_chat_id = c.chat_id 
+        GROUP BY f.target_chat_id
+        ORDER BY COUNT(*) DESC
+    """
+    return await execute_sql(sql, fetchall=True)

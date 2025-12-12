@@ -4,7 +4,8 @@ from telegram.ext import ContextTypes
 from db import (
     get_rules, get_footer, get_replacements, get_stats,
     get_chat_whitelist, get_quiet_mode, is_voting_enabled,
-    get_triggers, get_delay_settings, execute_sql
+    get_triggers, get_delay_settings, execute_sql,
+    get_forward_queue_counts  # [修改] 引入新函数
 )
 from handlers.utils import admin_only, is_global_admin, check_chat_permission, escape_markdown
 from locales import get_text
@@ -102,6 +103,27 @@ async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply.strip(), parse_mode="Markdown")
 
 
+# [新增] 队列查看
+@admin_only
+async def handle_queue_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # 仅超级管理员可查看（因为包含所有频道）
+    if not is_global_admin(update.message.from_user.id):
+        await update.message.reply_text(get_text("no_permission"))
+        return
+
+    rows = await get_forward_queue_counts()
+    if not rows:
+        await update.message.reply_text(get_text("queue_empty"), parse_mode="Markdown")
+        return
+
+    text = get_text("queue_status_title") + "\n\n"
+    for chat_id, title, count in rows:
+        safe_title = escape_markdown(title or "未知频道")
+        text += get_text("queue_row", chat_id, safe_title, count) + "\n"
+
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
 @admin_only
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_global = is_global_admin(update.message.from_user.id)
@@ -110,7 +132,6 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     min_s, max_s = await get_delay_settings()
     delay_status = f"{min_s}~{max_s}秒" if max_s > 0 else "关闭(实时)"
 
-    # 基础帮助内容
     help_text = f"""
 🤖 *Jaikcl_Bot 全能手册*
 👤 身份：`{role}`
@@ -175,10 +196,10 @@ _(支持 `all` 批量操作)_
 `/addforward` -100源 -100目标 — ✅ 建立转发
 `/delforward` -100源 -100目标 — ❌ 解除转发
 `/listforward` -100源 — 📋 查看转发链
+`/queue` — 📊 **查看积压队列** (新增)
 
 ━━━━━━━━━━━━━━━━━━
 """
-    # 超级管理员专属菜单
     if is_global:
         help_text += f"""⚙️ *系统管理 (Super Admin)*
 `/setdelay min max` — ⏱ **设置转发延迟(秒)**

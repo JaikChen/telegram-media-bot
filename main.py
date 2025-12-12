@@ -34,7 +34,7 @@ from handlers.chat_mgmt import (
 )
 
 from handlers.info import (
-    handle_listchats, handle_chatinfo, handle_stats, handle_help
+    handle_listchats, handle_chatinfo, handle_stats, handle_help, handle_queue_status # [修改] 导入新handler
 )
 
 # ----------------------------------------------------
@@ -54,8 +54,8 @@ logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 # ----------------------------------------------------
 async def daily_maintenance(context):
     print("⏳ [System] 执行每日维护任务...")
-    # 清理 365 天前的过期数据
-    deleted = await clean_expired_data(days=365)
+    # 清理 3650 天前的过期数据
+    deleted = await clean_expired_data(days=3650)
     # 整理数据库文件碎片
     await vacuum_db()
     print(f"✅ [System] 维护完成，清理了 {deleted} 条过期记录。")
@@ -88,7 +88,6 @@ def main():
     # =========================
     # 注册命令处理器 (Handlers)
     # =========================
-    # [修复] 使用 CommandHandler 替代 MessageHandler+Regex，以确保 context.args 可用
 
     # --- 系统管理 (System Admin) ---
     app.add_handler(CommandHandler("addadmin", handle_addadmin))
@@ -155,6 +154,7 @@ def main():
     app.add_handler(CommandHandler("chatinfo", handle_chatinfo))
     app.add_handler(CommandHandler("stats", handle_stats))
     app.add_handler(CommandHandler("help", handle_help))
+    app.add_handler(CommandHandler("queue", handle_queue_status)) # [新增]
 
     # =========================
     # 逻辑处理器 (Logic Handlers)
@@ -176,7 +176,7 @@ def main():
     if app.job_queue:
         # 每天 UTC 04:00 (北京时间 12:00) 执行数据库清理
         app.job_queue.run_daily(daily_maintenance, time=time(4, 0, 0))
-        print("⏰ 已设置每日 04:00 自动清理任务")
+        print("⏰ 已设置每日 03:06 自动清理任务")
 
     print("🚀 Bot 已启动，正在运行中...")
     app.run_polling()
