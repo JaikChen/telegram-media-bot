@@ -113,21 +113,33 @@ update_deps() {
 restart_bot() {
     log_step "Restarting Service"
     
-    if systemctl is-active --quiet "$SERVICE_NAME"; then
+    # Ensure directories exist
+    mkdir -p "$APP_DIR/data" "$APP_DIR/logs" "$APP_DIR/backups"
+    
+    if command -v systemctl &> /dev/null && systemctl is-active --quiet "$SERVICE_NAME"; then
         log_info "Restarting systemd service: $SERVICE_NAME"
         sudo systemctl restart "$SERVICE_NAME"
         log_info "✅ Service restarted via systemd."
     else
         log_warn "Service $SERVICE_NAME is not active or not installed as a systemd service."
         
-        # Kill existing processes to prevent duplicates
+        # Windows compatibility or non-systemd Linux
         log_info "Cleaning up existing bot processes..."
-        pkill -f "python src/main.py" || true
+        if command -v pkill &> /dev/null; then
+            pkill -f "python src/main.py" || true
+        else
+            log_warn "pkill not found. Skipping process cleanup."
+        fi
         sleep 2
         
-        log_info "Attempting to start bot in background..."
-        nohup python src/main.py > logs/bot.log 2>&1 &
-        log_info "✅ Bot started in background (PID: $!)."
+        log_info "Attempting to start bot..."
+        if command -v nohup &> /dev/null; then
+            nohup python src/main.py > "$APP_DIR/logs/bot.log" 2>&1 &
+            log_info "✅ Bot started in background (PID: $!)."
+        else
+            log_info "nohup not found. Starting bot in foreground (press Ctrl+C to stop)."
+            python src/main.py
+        fi
     fi
 }
 
