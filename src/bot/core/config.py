@@ -1,15 +1,64 @@
 import os
+import sys
 from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv()
+from dotenv import load_dotenv, set_key
 
 # Base Directory (Project Root)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+ENV_FILE = BASE_DIR / ".env"
 
 # Bot Settings
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-ADMIN_IDS = [int(i) for i in os.getenv("ADMIN_IDS", "").split(",") if i]
+ADMIN_IDS = []
+
+def get_admin_ids():
+    return [int(i) for i in os.getenv("ADMIN_IDS", "").split(",") if i]
+
+def ensure_config():
+    """Ensure critical configuration exists, prompt user if missing."""
+    global BOT_TOKEN, ADMIN_IDS
+    
+    if not ENV_FILE.exists():
+        if (BASE_DIR / ".env.example").exists():
+            import shutil
+            shutil.copy(BASE_DIR / ".env.example", ENV_FILE)
+            print(f"Created .env from .env.example")
+        else:
+            ENV_FILE.touch()
+
+    load_dotenv(ENV_FILE)
+    
+    # Check BOT_TOKEN
+    token = os.getenv("BOT_TOKEN")
+    if not token:
+        print("\033[93m" + "!" * 50 + "\033[0m")
+        print("\033[93mMissing BOT_TOKEN!\033[0m")
+        token = input("Please enter your Telegram Bot Token (from @BotFather): ").strip()
+        if token:
+            set_key(str(ENV_FILE), "BOT_TOKEN", token)
+            os.environ["BOT_TOKEN"] = token
+        else:
+            print("Error: BOT_TOKEN is required to start the bot.")
+            sys.exit(1)
+    
+    BOT_TOKEN = token
+
+    # Check ADMIN_IDS
+    admins = os.getenv("ADMIN_IDS")
+    if not admins:
+        print("\033[93m" + "!" * 50 + "\033[0m")
+        print("\033[93mMissing ADMIN_IDS!\033[0m")
+        admins = input("Please enter Admin Telegram ID(s) (comma separated): ").strip()
+        if admins:
+            set_key(str(ENV_FILE), "ADMIN_IDS", admins)
+            os.environ["ADMIN_IDS"] = admins
+        else:
+            print("Warning: No ADMIN_IDS provided. System commands may be restricted.")
+    
+    ADMIN_IDS = get_admin_ids()
+
+# Initial load
+ADMIN_IDS = get_admin_ids()
 
 # Storage Settings
 DB_FILE = os.getenv("DB_FILE", str(BASE_DIR / "data/bot.db"))

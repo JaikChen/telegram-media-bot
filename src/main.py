@@ -101,6 +101,14 @@ async def post_shutdown(application: Application):
 
 
 def main():
+    # Ensure critical configuration exists
+    from src.bot.core.config import ensure_config
+    ensure_config()
+    
+    # Re-import BOT_TOKEN after ensure_config might have updated it
+    import src.bot.core.config as config
+    token = config.BOT_TOKEN
+
     # Ensure necessary directories exist
     from src.bot.core.config import BASE_DIR
 
@@ -114,7 +122,7 @@ def main():
 
     app = (
         Application.builder()
-        .token(BOT_TOKEN)
+        .token(token)
         .rate_limiter(AIORateLimiter(overall_max_rate=30, overall_time_period=1))
         .post_init(post_init)
         .post_shutdown(post_shutdown)
