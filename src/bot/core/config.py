@@ -26,13 +26,13 @@ def ensure_config():
         else:
             ENV_FILE.touch()
 
-    load_dotenv(ENV_FILE)
+    load_dotenv(ENV_FILE, override=True)
     
     # Check BOT_TOKEN
     token = os.getenv("BOT_TOKEN")
-    if not token:
+    if not token or token == "your_bot_token_here":
         print("\033[93m" + "!" * 50 + "\033[0m")
-        print("\033[93mMissing BOT_TOKEN!\033[0m")
+        print("\033[93mInvalid or Missing BOT_TOKEN!\033[0m")
         token = input("Please enter your Telegram Bot Token (from @BotFather): ").strip()
         if token:
             set_key(str(ENV_FILE), "BOT_TOKEN", token)
@@ -45,9 +45,9 @@ def ensure_config():
 
     # Check ADMIN_IDS
     admins = os.getenv("ADMIN_IDS")
-    if not admins:
+    if not admins or admins == "12345678,87654321":
         print("\033[93m" + "!" * 50 + "\033[0m")
-        print("\033[93mMissing ADMIN_IDS!\033[0m")
+        print("\033[93mInvalid or Missing ADMIN_IDS!\033[0m")
         admins = input("Please enter Admin Telegram ID(s) (comma separated): ").strip()
         if admins:
             set_key(str(ENV_FILE), "ADMIN_IDS", admins)
