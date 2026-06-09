@@ -1,0 +1,15 @@
+services:
+  bot:
+    build: .
+    container_name: telegram-media-bot
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+    env_file:
+      - .env
+    environment:
+      - DB_FILE=/app/data/bot.db
+      - LOG_FILE=/app/logs/bot.log
+      - BACKUP_DIR=/app/backups
