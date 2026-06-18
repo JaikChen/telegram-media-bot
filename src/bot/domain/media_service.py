@@ -55,8 +55,8 @@ class MediaService:
         await MediaRepository.enqueue_batch([local_item])
 
         # 5. External Forwarding
-        targets = set(await ChatRepository.get_forward_targets(cid))
-        for tcid in targets:
+        targets = sorted(list(set(await ChatRepository.get_forward_targets(cid))))
+        for i, tcid in enumerate(targets):
             if tcid == cid:
                 continue
 
@@ -72,7 +72,9 @@ class MediaService:
                 "scid": cid,
                 "smid": str(msg.message_id),
             }
-            await MediaRepository.add_forward_seen_and_enqueue(tcid, item)
+            # Stagger each destination channel by 30 seconds
+            delay_offset = 30 * i
+            await MediaRepository.add_forward_seen_and_enqueue(tcid, item, delay_offset=delay_offset)
 
         return True  # New media processed, trigger original deletion
 
@@ -125,8 +127,8 @@ class MediaService:
         await MediaRepository.enqueue_batch(local_items)
 
         # 2. Forwarding to Targets
-        targets = set(await ChatRepository.get_forward_targets(cid))
-        for tcid in targets:
+        targets = sorted(list(set(await ChatRepository.get_forward_targets(cid))))
+        for i, tcid in enumerate(targets):
             if tcid == cid:
                 continue
             t_cap = restore_all_tags(cap, await clean_caption(cap, tcid, has_spoiler=sp, chat_title=chat_title))
@@ -148,7 +150,9 @@ class MediaService:
                             "smid": str(smid),
                         }
                     )
-            await MediaRepository.add_forward_seen_and_enqueue_album(tcid, forward_items)
+            # Stagger each destination channel by 30 seconds
+            delay_offset = 30 * i
+            await MediaRepository.add_forward_seen_and_enqueue_album(tcid, forward_items, delay_offset=delay_offset)
 
         return True
 

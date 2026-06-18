@@ -26,7 +26,7 @@ class MediaRepository:
         return count > 0
 
     @staticmethod
-    async def add_forward_seen_and_enqueue(target_chat_id: str, item: dict) -> bool:
+    async def add_forward_seen_and_enqueue(target_chat_id: str, item: dict, delay_offset: int = 0) -> bool:
         async with db_manager._write_lock:
             db = await db_manager.get_db()
             try:
@@ -62,7 +62,7 @@ class MediaRepository:
                     1 if item.get("sp") else 0,
                     item["fuid"],
                     item.get("mgid"),
-                    now,
+                    now + delay_offset,
                     item.get("prio", 0),
                     item.get("scid"),
                     item.get("smid"),
@@ -77,7 +77,7 @@ class MediaRepository:
                 raise
 
     @staticmethod
-    async def add_forward_seen_and_enqueue_album(target_chat_id: str, items: List[dict]) -> bool:
+    async def add_forward_seen_and_enqueue_album(target_chat_id: str, items: List[dict], delay_offset: int = 0) -> bool:
         if not items:
             return True
         async with db_manager._write_lock:
@@ -118,7 +118,7 @@ class MediaRepository:
                         1 if it.get("sp") else 0,
                         it["fuid"],
                         it.get("mgid"),
-                        now,
+                        now + delay_offset,
                         it.get("prio", 0),
                         it.get("scid"),
                         it.get("smid"),
@@ -186,11 +186,11 @@ class MediaRepository:
                 # 1. Fetch the rows first
                 select_sql = """
                     SELECT * FROM forward_queue
-                    WHERE status = 0 OR (status = 1 AND updated_at < ?)
-                    ORDER BY priority DESC, id ASC
+                    WHERE (status = 0 AND created_at <= ?) OR (status = 1 AND updated_at < ?)
+                    ORDER BY priority DESC, created_at ASC, id ASC
                     LIMIT ?
                 """
-                async with db.execute(select_sql, (now - 600, limit)) as cursor:
+                async with db.execute(select_sql, (now, now - 600, limit)) as cursor:
                     rows = await cursor.fetchall()
 
                 if not rows:
