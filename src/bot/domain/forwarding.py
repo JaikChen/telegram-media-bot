@@ -55,24 +55,28 @@ class ForwardingService:
                                 context.bot, tcid, mgid, group_rows, prio, scid, smid
                             )
                             if success:
-                                [handled_ids.add(gr[0]) for gr in group_rows]
+                                for gr in group_rows:
+                                    handled_ids.add(gr[0])
                             else:
-                                break
+                                # Mark as handled to avoid immediate retry in this loop if multiple items from same group
+                                for gr in group_rows:
+                                    handled_ids.add(gr[0])
                         else:
                             success = await cls._process_single_forward(
                                 context.bot, rid, tcid, mt, fid, cap, sp, fuid, prio, scid, smid
                             )
                             if success:
                                 handled_ids.add(rid)
-                            else:
-                                break
-                        await asyncio.sleep(0.1)
+                        
+                        await asyncio.sleep(0.2) # Small delay between messages
                     except RetryAfter as e:
+                        logger.warning(f"⚠️ Rate limited. Waiting {e.retry_after}s")
                         await asyncio.sleep(e.retry_after)
-                        break
+                        break # Stop this worker batch on rate limit
                     except Exception as e:
-                        logger.error(f"❌ Forward item {rid} failed: {e}")
-                        break
+                        logger.error(f"❌ Unexpected error in worker loop for item {rid}: {e}")
+                        handled_ids.add(rid) # Mark as handled to move past it in this batch
+                        continue
             finally:
                 unhandled = [r[0] for r in batch if r[0] not in handled_ids]
                 if unhandled:
@@ -156,16 +160,32 @@ class ForwardingService:
     ):
         params = {
             "chat_id": cid,
-            "caption": escape_markdown(cap) if cap else None,
             "reply_markup": markup,
-            "parse_mode": "Markdown",
         }
+        
+        # Add captions to text-supporting media
+        if mt not in ["sticker", "video_note"]:
+            params["caption"] = escape_markdown(cap) if cap else None
+            params["parse_mode"] = "Markdown"
+            
+        # Add spoiler to supported types
         if mt in ["photo", "video", "animation"]:
             params["has_spoiler"] = sp
+
         if mt == "photo":
             return await bot.send_photo(photo=fid, **params)
         if mt == "video":
             return await bot.send_video(video=fid, **params)
+        if mt == "animation":
+            return await bot.send_animation(animation=fid, **params)
         if mt == "document":
             return await bot.send_document(document=fid, **params)
+        if mt == "audio":
+            return await bot.send_audio(audio=fid, **params)
+        if mt == "voice":
+            return await bot.send_voice(voice=fid, **params)
+        if mt == "video_note":
+            return await bot.send_video_note(video_note=fid, **params)
+        if mt == "sticker":
+            return await bot.send_sticker(sticker=fid, **params)
         return None
