@@ -481,10 +481,27 @@ class ChatRepository:
 
     @staticmethod
     async def get_forward_targets(source_chat_id: str) -> List[str]:
-        rows = await execute_sql(
-            "SELECT target_chat_id FROM forward_map WHERE source_chat_id=?", (source_chat_id,), fetchall=True
-        )
-        return [r[0] for r in rows]
+        """
+        Recursively fetches all forward targets, supporting cascaded forwarding (A -> B -> C).
+        Uses BFS to traverse the forwarding graph and prevents infinite loops (A -> B -> A).
+        """
+        targets = set()
+        queue = [source_chat_id]
+        visited = {source_chat_id}
+
+        while queue:
+            current = queue.pop(0)
+            rows = await execute_sql(
+                "SELECT target_chat_id FROM forward_map WHERE source_chat_id=?", (current,), fetchall=True
+            )
+            for r in rows:
+                tcid = r[0]
+                if tcid not in visited:
+                    visited.add(tcid)
+                    targets.add(tcid)
+                    queue.append(tcid)
+                    
+        return list(targets)
 
     @staticmethod
     async def get_chat_rules(chat_id: str) -> List[str]:
