@@ -331,12 +331,32 @@ class MediaRepository:
         )
 
     @staticmethod
-    async def peek_queue() -> Optional[tuple]:
-        return await execute_sql(
-            "SELECT * FROM forward_queue WHERE status = 0 OR (status = 1 AND updated_at < ?) ORDER BY priority DESC, id ASC LIMIT 1",
-            (int(time.time()) - 600,),
+    async def peek_queue() -> Optional[int]:
+        """
+        Returns the created_at timestamp of the next item in the queue.
+        Returns 0 if an item is ready right now, or a future timestamp if items are staggered.
+        Returns None if the queue is completely empty.
+        """
+        now = int(time.time())
+        # First, check if there's anything ready NOW
+        ready = await execute_sql(
+            "SELECT 1 FROM forward_queue WHERE (status = 0 AND created_at <= ?) OR (status = 1 AND updated_at < ?) LIMIT 1",
+            (now, now - 600),
             fetchone=True,
         )
+        if ready:
+            return 0
+
+        # If nothing is ready now, find the NEXT future item's timestamp
+        future = await execute_sql(
+            "SELECT created_at FROM forward_queue WHERE status = 0 AND created_at > ? ORDER BY created_at ASC LIMIT 1",
+            (now,),
+            fetchone=True,
+        )
+        if future:
+            return future[0]
+            
+        return None
 
     @staticmethod
     async def get_stats() -> List[tuple]:

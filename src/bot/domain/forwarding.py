@@ -82,9 +82,20 @@ class ForwardingService:
                 if unhandled:
                     await MediaRepository.reset_processing_status(unhandled)
 
-            if await MediaRepository.peek_queue():
+            next_item_time = await MediaRepository.peek_queue()
+            if next_item_time is not None:
+                now = int(asyncio.get_event_loop().time())
                 min_s, max_s = await MediaRepository.get_delay_settings()
-                delay = random.randint(min_s, max_s) if max_s > 0 else 1
+                base_delay = random.randint(min_s, max_s) if max_s > 0 else 1
+                
+                # If there's a future item, ensure the delay pushes the worker until AT LEAST that future time
+                if next_item_time > 0:
+                    real_now = int(time.time())
+                    wait_time = next_item_time - real_now
+                    delay = max(base_delay, wait_time)
+                else:
+                    delay = base_delay
+                    
                 context.job_queue.run_once(cls.forward_worker, delay, name="forward_worker")
 
     @classmethod
