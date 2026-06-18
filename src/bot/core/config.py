@@ -42,12 +42,16 @@ def ensure_config():
     if not token or token == "your_bot_token_here":
         print("\033[93m" + "!" * 50 + "\033[0m")
         print("\033[93mInvalid or Missing BOT_TOKEN!\033[0m")
-        token = input("Please enter your Telegram Bot Token (from @BotFather): ").strip()
-        if token:
-            set_key(str(ENV_FILE), "BOT_TOKEN", token)
-            os.environ["BOT_TOKEN"] = token
+        if sys.stdin.isatty():
+            token = input("Please enter your Telegram Bot Token (from @BotFather): ").strip()
+            if token:
+                set_key(str(ENV_FILE), "BOT_TOKEN", token)
+                os.environ["BOT_TOKEN"] = token
+            else:
+                print("Error: BOT_TOKEN is required to start the bot.")
+                sys.exit(1)
         else:
-            print("Error: BOT_TOKEN is required to start the bot.")
+            print("Error: Running in non-interactive mode with missing BOT_TOKEN. Please set it in .env file.")
             sys.exit(1)
     
     BOT_TOKEN = token
@@ -57,12 +61,15 @@ def ensure_config():
     if not admins or admins == "12345678,87654321":
         print("\033[93m" + "!" * 50 + "\033[0m")
         print("\033[93mInvalid or Missing ADMIN_IDS!\033[0m")
-        admins = input("Please enter Admin Telegram ID(s) (comma separated): ").strip()
-        if admins:
-            set_key(str(ENV_FILE), "ADMIN_IDS", admins)
-            os.environ["ADMIN_IDS"] = admins
+        if sys.stdin.isatty():
+            admins = input("Please enter Admin Telegram ID(s) (comma separated): ").strip()
+            if admins:
+                set_key(str(ENV_FILE), "ADMIN_IDS", admins)
+                os.environ["ADMIN_IDS"] = admins
+            else:
+                print("Warning: No ADMIN_IDS provided. System commands may be restricted.")
         else:
-            print("Warning: No ADMIN_IDS provided. System commands may be restricted.")
+            print("Warning: Running in non-interactive mode with missing ADMIN_IDS.")
     
     ADMIN_IDS = get_admin_ids()
 
