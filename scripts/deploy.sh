@@ -33,13 +33,15 @@ check_environment() {
         exit 1
     fi
     
-    PY_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-    # Compare versions using a simple string comparison or bc
-    if [ "$(echo "$PY_VERSION < 3.10" | bc -l)" -eq 1 ]; then
-        log_err "Python version too low ($PY_VERSION). 3.10+ required."
+    PY_MAJOR=$(python3 -c 'import sys; print(sys.version_info.major)')
+    PY_MINOR=$(python3 -c 'import sys; print(sys.version_info.minor)')
+    
+    # Compare versions: major must be >= 3 and minor must be >= 10
+    if [ "$PY_MAJOR" -lt 3 ] || { [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 10 ]; }; then
+        log_err "Python version too low ($PY_MAJOR.$PY_MINOR). 3.10+ required."
         exit 1
     fi
-    log_info "✅ Python Version: $PY_VERSION"
+    log_info "✅ Python Version: $PY_MAJOR.$PY_MINOR"
 
     if ! command -v git &> /dev/null; then
         log_err "git not found. Cannot update code from GitHub."

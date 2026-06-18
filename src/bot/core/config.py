@@ -12,7 +12,16 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_IDS = []
 
 def get_admin_ids():
-    return [int(i) for i in os.getenv("ADMIN_IDS", "").split(",") if i]
+    raw_admins = os.getenv("ADMIN_IDS", "").split(",")
+    admin_ids = []
+    for i in raw_admins:
+        clean_i = i.strip().strip("'").strip('"')
+        if clean_i:
+            try:
+                admin_ids.append(int(clean_i))
+            except ValueError:
+                print(f"Warning: Invalid Admin ID ignored: {i}")
+    return admin_ids
 
 def ensure_config():
     """Ensure critical configuration exists, prompt user if missing."""

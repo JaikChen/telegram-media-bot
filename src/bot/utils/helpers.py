@@ -2,7 +2,7 @@ import logging
 from functools import wraps
 from telegram import Update, Bot, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.ext import ContextTypes
-from src.bot.core.config import ADMIN_IDS
+from src.bot.core import config
 from src.bot.data.repositories import AdminRepository, ChatRepository, MediaRepository
 
 logger = logging.getLogger(__name__)
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def is_global_admin(user_id: int | str) -> bool:
     """Checks if the user is a super admin from config."""
-    return int(user_id) in ADMIN_IDS
+    return int(user_id) in config.ADMIN_IDS
 
 
 async def is_admin(update: Update) -> bool:

@@ -4,7 +4,7 @@ import logging
 import contextlib
 from pathlib import Path
 from typing import List, Tuple, Any, Optional
-from src.bot.core.config import DB_FILE
+from src.bot.core import config
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class DatabaseManager:
         if self._conn is None:
             try:
                 # Ensure directory exists using Path for safety
-                db_path = Path(DB_FILE).resolve()
+                db_path = Path(config.DB_FILE).resolve()
                 db_path.parent.mkdir(parents=True, exist_ok=True)
 
                 self._conn = await aiosqlite.connect(str(db_path))

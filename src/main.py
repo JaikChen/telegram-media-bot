@@ -1,4 +1,4 @@
-8067701691:AAF42Qy-P3WrdEZxOUgbdukG25M5ZtMwr1gimport logging
+import logging
 import sys
 from pathlib import Path
 
@@ -200,6 +200,7 @@ def main():
 
     # Interaction Handlers
     app.add_handler(CallbackQueryHandler(handle_vote_callback))
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     # Edit Sync Handler

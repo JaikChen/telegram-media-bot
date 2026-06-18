@@ -14,7 +14,7 @@ from telegram import Update, InputFile
 from telegram.ext import ContextTypes
 from telegram.error import BadRequest, Forbidden
 
-from src.bot.core.config import ADMIN_IDS, DB_FILE
+from src.bot.core import config
 from src.bot.data.repositories import AdminRepository, ChatRepository, MediaRepository, execute_sql
 from src.bot.utils.helpers import is_global_admin, log_event, escape_markdown, admin_only
 from src.bot.core.locales import get_text
@@ -71,7 +71,7 @@ async def handle_listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     try:
         admins = await AdminRepository.list_admins()
-        fixed = sorted(ADMIN_IDS)
+        fixed = sorted(config.ADMIN_IDS)
         reply = "👑 管理员列表：\n\n• 固定：\n" + "\n".join(f" - {a}" for a in fixed)
         reply += "\n\n• 动态：\n" + ("\n".join(f" - {a}" for a in admins) if admins else " - (空)")
         await update.message.reply_text(reply)
@@ -86,14 +86,14 @@ async def handle_backupdb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     try:
-        if not os.path.exists(DB_FILE):
+        if not os.path.exists(config.DB_FILE):
             await update.message.reply_text("❌ 无数据库")
             return
 
-        with open(DB_FILE, "rb") as db_file:
+        with open(config.DB_FILE, "rb") as db_file:
             await context.bot.send_document(
                 chat_id=update.message.chat_id,
-                document=InputFile(db_file, filename=os.path.basename(DB_FILE)),
+                document=InputFile(db_file, filename=os.path.basename(config.DB_FILE)),
                 caption=get_text("backup_caption"),
             )
         await log_event(context.bot, "管理员执行了数据库备份", category="system")
@@ -122,7 +122,7 @@ async def handle_restoredb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         tmp.seek(0)
 
         # Overwrite database file
-        with open(DB_FILE, "wb") as f:
+        with open(config.DB_FILE, "wb") as f:
             f.write(tmp.read())
 
         await msg.reply_text(get_text("restore_success"))
