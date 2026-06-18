@@ -55,7 +55,7 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 3. Handle Single Media
-    should_delete = await MediaService.process_incoming_message(msg)
+    should_delete = await MediaService.process_incoming_message(msg, context.bot.id)
 
     if should_delete:
         try:
@@ -85,19 +85,21 @@ async def process_album_debounce(context: ContextTypes.DEFAULT_TYPE, gid: str, c
         return
 
     msgs = sorted(data["messages"], key=lambda x: x.message_id)
+    should_delete = False
     try:
-        await MediaService.process_album(msgs, gid, cid, smid)
+        should_delete = await MediaService.process_album(msgs, gid, cid, smid, context.bot.id)
     finally:
         if gid in debounce_tasks:
             del debounce_tasks[gid]
         if gid in album_cache:
             del album_cache[gid]
 
-        try:
-            # Delete all original album messages
-            for m in msgs:
-                await m.delete()
-        except Exception as e:
-            logger.warning(f"⚠️ Could not delete source album: {e}")
+        if should_delete:
+            try:
+                # Delete all original album messages
+                for m in msgs:
+                    await m.delete()
+            except Exception as e:
+                logger.warning(f"⚠️ Could not delete source album: {e}")
 
         await ForwardingService.trigger_worker(context)

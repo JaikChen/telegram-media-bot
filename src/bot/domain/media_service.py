@@ -11,9 +11,9 @@ class MediaService:
     """Core business logic for processing, cleaning, and distributing media."""
 
     @staticmethod
-    async def process_incoming_message(msg: Message) -> bool:
+    async def process_incoming_message(msg: Message, bot_id: int) -> bool:
         """
-        Determines if a message is a duplicate or needs cleaning.
+        Determines if a message is a duplicate or needs cleaning/forwarding.
         Returns True if the original message should be deleted.
         """
         cid = str(msg.chat_id)
@@ -21,10 +21,25 @@ class MediaService:
         if not fid:
             return False
 
+        is_from_bot = (msg.from_user and msg.from_user.id == bot_id)
+
         # 1. Global Deduplication Check
-        if await MediaRepository.is_duplicate_globally(cid, fuid):
-            logger.info(f"♻️ [Duplicate] Removing existing media {fuid} in chat {cid}")
-            return True  # Duplicate found, trigger deletion
+        in_seen, in_forward = await MediaRepository.check_duplicate_status(cid, fuid)
+
+        if in_seen:
+            if is_from_bot:
+                return False  # Bot's own fully processed message, leave it alone
+            else:
+                logger.info(f"♻️ [Duplicate] Removing existing media {fuid} in chat {cid}")
+                return True  # User duplicate, delete
+
+        if in_forward and not is_from_bot:
+            logger.info(f"♻️ [Duplicate] User attempting to post forwarded media {fuid} in chat {cid}")
+            return True
+
+        # Mark as seen
+        if not await MediaRepository.add_seen_atomic(cid, fuid):
+            return True if not is_from_bot else False
 
         # 2. Preparation for Cleaning
         cap = msg.caption or ""
@@ -32,27 +47,23 @@ class MediaService:
         uid = msg.from_user.id if msg.from_user else 0
         chat_title = msg.chat.title or "Unknown"
 
-        # 3. Mark as Received (Atomic) - Primary race condition protection
-        if not await MediaRepository.add_seen_atomic(cid, fuid):
-            logger.info(f"♻️ [Duplicate] Already processed media {fuid} in chat {cid}")
-            return True  # Already processed, trigger deletion of the duplicate
-
         # 4. Self-Cleaning (Send purified version back to source)
-        cleaned_local = restore_all_tags(
-            cap, await clean_caption(cap, cid, uid, msg.caption_entities, sp, chat_title=chat_title)
-        )
-        local_item = {
-            "tid": cid,
-            "mt": mt,
-            "fid": fid,
-            "cap": cleaned_local,
-            "sp": sp,
-            "fuid": fuid,
-            "prio": 10,
-            "scid": cid,
-            "smid": str(msg.message_id),
-        }
-        await MediaRepository.enqueue_batch([local_item])
+        if not is_from_bot:
+            cleaned_local = restore_all_tags(
+                cap, await clean_caption(cap, cid, uid, msg.caption_entities, sp, chat_title=chat_title)
+            )
+            local_item = {
+                "tid": cid,
+                "mt": mt,
+                "fid": fid,
+                "cap": cleaned_local,
+                "sp": sp,
+                "fuid": fuid,
+                "prio": 10,
+                "scid": cid,
+                "smid": str(msg.message_id),
+            }
+            await MediaRepository.enqueue_batch([local_item])
 
         # 5. External Forwarding
         targets = sorted(list(set(await ChatRepository.get_forward_targets(cid))))
@@ -76,11 +87,11 @@ class MediaService:
             delay_offset = 30 * i
             await MediaRepository.add_forward_seen_and_enqueue(tcid, item, delay_offset=delay_offset)
 
-        return True  # New media processed, trigger original deletion
+        return True if not is_from_bot else False
 
     @staticmethod
-    async def process_album(msgs: List[Message], gid: str, cid: str, smid: int) -> bool:
-        """Processes a media group atomically with self-cleaning."""
+    async def process_album(msgs: List[Message], gid: str, cid: str, smid: int, bot_id: int) -> bool:
+        """Processes a media group atomically with self-cleaning and cascading support."""
         if not msgs:
             return False
 
@@ -95,36 +106,47 @@ class MediaService:
         if not fuid_first:
             return False
 
-        # Deduplication check for the whole album
-        if await MediaRepository.is_duplicate_globally(cid, fuid_first):
+        is_from_bot = (msgs[0].from_user and msgs[0].from_user.id == bot_id)
+
+        in_seen, in_forward = await MediaRepository.check_duplicate_status(cid, fuid_first)
+
+        if in_seen:
+            if is_from_bot:
+                return False
+            else:
+                logger.info(f"♻️ [Duplicate Album] Removing existing album {gid} in chat {cid}")
+                return True
+
+        if in_forward and not is_from_bot:
+            logger.info(f"♻️ [Duplicate Album] User attempting to post forwarded album {gid} in chat {cid}")
             return True
 
-        # 1. Self-Cleaning for Source
+        # 1. Mark as processing for Source
         if not await MediaRepository.add_seen_atomic(cid, fuid_first):
-            logger.info(f"♻️ [Duplicate Album] Already processing album {gid} in chat {cid}")
-            return True
+            return True if not is_from_bot else False
 
-        cleaned_local = restore_all_tags(cap, await clean_caption(cap, cid, uid, entities, sp, chat_title=chat_title))
-
-        local_items = []
-        for m in msgs:
-            fid, fuid, mt = MediaService._get_media_info(m)
-            if fid:
-                local_items.append(
-                    {
-                        "tid": cid,
-                        "mt": mt,
-                        "fid": fid,
-                        "cap": cleaned_local if m == cap_msg else None,
-                        "sp": sp,
-                        "fuid": fuid,
-                        "mgid": gid,
-                        "prio": 10,
-                        "scid": cid,
-                        "smid": str(smid),
-                    }
-                )
-        await MediaRepository.enqueue_batch(local_items)
+        # Self-Cleaning only if NOT from bot
+        if not is_from_bot:
+            cleaned_local = restore_all_tags(cap, await clean_caption(cap, cid, uid, entities, sp, chat_title=chat_title))
+            local_items = []
+            for m in msgs:
+                fid, fuid, mt = MediaService._get_media_info(m)
+                if fid:
+                    local_items.append(
+                        {
+                            "tid": cid,
+                            "mt": mt,
+                            "fid": fid,
+                            "cap": cleaned_local if m == cap_msg else None,
+                            "sp": sp,
+                            "fuid": fuid,
+                            "mgid": gid,
+                            "prio": 10,
+                            "scid": cid,
+                            "smid": str(smid),
+                        }
+                    )
+            await MediaRepository.enqueue_batch(local_items)
 
         # 2. Forwarding to Targets
         targets = sorted(list(set(await ChatRepository.get_forward_targets(cid))))
@@ -154,7 +176,7 @@ class MediaService:
             delay_offset = 30 * i
             await MediaRepository.add_forward_seen_and_enqueue_album(tcid, forward_items, delay_offset=delay_offset)
 
-        return True
+        return True if not is_from_bot else False
 
     @staticmethod
     def _get_media_info(msg: Message) -> Tuple[Optional[str], Optional[str], Optional[str]]:

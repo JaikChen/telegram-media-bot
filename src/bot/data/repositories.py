@@ -247,16 +247,11 @@ class MediaRepository:
         )
 
     @staticmethod
-    async def is_duplicate_globally(chat_id: str, file_unique_id: str) -> bool:
-        """Checks if a file has been seen or forwarded in a specific chat."""
-        sql = """
-            SELECT 1 FROM seen WHERE chat_id=? AND file_unique_id=?
-            UNION
-            SELECT 1 FROM forward_seen WHERE chat_id=? AND file_unique_id=?
-            LIMIT 1
-        """
-        res = await execute_sql(sql, (chat_id, file_unique_id, chat_id, file_unique_id), fetchone=True)
-        return res is not None
+    async def check_duplicate_status(chat_id: str, file_unique_id: str) -> Tuple[bool, bool]:
+        """Returns (in_seen, in_forward_seen)."""
+        in_seen = await execute_sql("SELECT 1 FROM seen WHERE chat_id=? AND file_unique_id=? LIMIT 1", (chat_id, file_unique_id), fetchone=True)
+        in_fw = await execute_sql("SELECT 1 FROM forward_seen WHERE chat_id=? AND file_unique_id=? LIMIT 1", (chat_id, file_unique_id), fetchone=True)
+        return (in_seen is not None, in_fw is not None)
 
     @staticmethod
     async def increment_retry(rid: int, reason: str = "Unknown"):
@@ -481,27 +476,11 @@ class ChatRepository:
 
     @staticmethod
     async def get_forward_targets(source_chat_id: str) -> List[str]:
-        """
-        Recursively fetches all forward targets, supporting cascaded forwarding (A -> B -> C).
-        Uses BFS to traverse the forwarding graph and prevents infinite loops (A -> B -> A).
-        """
-        targets = set()
-        queue = [source_chat_id]
-        visited = {source_chat_id}
-
-        while queue:
-            current = queue.pop(0)
-            rows = await execute_sql(
-                "SELECT target_chat_id FROM forward_map WHERE source_chat_id=?", (current,), fetchall=True
-            )
-            for r in rows:
-                tcid = r[0]
-                if tcid not in visited:
-                    visited.add(tcid)
-                    targets.add(tcid)
-                    queue.append(tcid)
-                    
-        return list(targets)
+        """Fetches direct forward targets for dynamic cascading."""
+        rows = await execute_sql(
+            "SELECT target_chat_id FROM forward_map WHERE source_chat_id=?", (source_chat_id,), fetchall=True
+        )
+        return [r[0] for r in rows]
 
     @staticmethod
     async def get_chat_rules(chat_id: str) -> List[str]:
