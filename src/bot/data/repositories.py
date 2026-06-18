@@ -176,23 +176,41 @@ class MediaRepository:
     async def fetch_queue_batch(limit: int = 50) -> List[tuple]:
         """
         Atomically fetches and marks a batch of items as 'processing'.
-        Uses SQLite's RETURNING clause (available since 3.35) for process-safe atomicity.
+        Compatible with older SQLite versions lacking RETURNING support.
         """
         now = int(time.time())
-        # The subquery finds the IDs, and the outer UPDATE marks them and returns the full rows.
-        # This is atomic within a single transaction.
-        sql = """
-            UPDATE forward_queue 
-            SET status = 1, updated_at = ? 
-            WHERE id IN (
-                SELECT id FROM forward_queue 
-                WHERE status = 0 OR (status = 1 AND updated_at < ?) 
-                ORDER BY priority DESC, id ASC 
-                LIMIT ?
-            )
-            RETURNING *
-        """
-        return await execute_sql(sql, (now, now - 600, limit), fetchall=True)
+        # Use an explicit transaction to ensure atomic SELECT then UPDATE
+        async with db_manager._write_lock:
+            db = await db_manager.get_db()
+            try:
+                # 1. Fetch the rows first
+                select_sql = """
+                    SELECT * FROM forward_queue
+                    WHERE status = 0 OR (status = 1 AND updated_at < ?)
+                    ORDER BY priority DESC, id ASC
+                    LIMIT ?
+                """
+                async with db.execute(select_sql, (now - 600, limit)) as cursor:
+                    rows = await cursor.fetchall()
+
+                if not rows:
+                    return []
+
+                # 2. Mark those specific rows as processing
+                row_ids = [r[0] for r in rows]
+                placeholders = ",".join(["?"] * len(row_ids))
+                update_sql = f"""
+                    UPDATE forward_queue
+                    SET status = 1, updated_at = ?
+                    WHERE id IN ({placeholders})
+                """
+                await db.execute(update_sql, (now, *row_ids))
+                await db.commit()
+                return rows
+            except Exception as e:
+                await db.rollback()
+                logger.error(f"❌ Error in fetch_queue_batch transaction: {e}")
+                return []
 
     @staticmethod
     async def get_forward_group(chat_id: str, media_group_id: str) -> List[tuple]:
