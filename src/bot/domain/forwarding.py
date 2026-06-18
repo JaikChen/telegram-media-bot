@@ -112,6 +112,8 @@ class ForwardingService:
                     await log_event(bot, f"📤 <b>单媒体转发成功</b>\n目标: <code>{tcid}</code>", category="forward")
                 await MediaRepository.delete_queue_items([rid])
                 return True
+        except RetryAfter:
+            raise  # Let RetryAfter bubble up to the main loop to pause the worker correctly
         except Exception as e:
             await MediaRepository.increment_retry(rid, reason=str(e))
         return False
@@ -150,6 +152,8 @@ class ForwardingService:
                 if prio < 10:
                     await log_event(bot, f"📤 <b>相册转发成功</b>\n目标: <code>{tcid}</code>", category="forward")
                 return True
+        except RetryAfter:
+            raise  # Let RetryAfter bubble up to the main loop to pause the worker correctly
         except Exception as e:
             await MediaRepository.increment_retry_group(tcid, mgid, reason=str(e))
         return False
