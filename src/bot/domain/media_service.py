@@ -65,8 +65,8 @@ class MediaService:
             }
             await MediaRepository.enqueue_batch([local_item])
 
-        # 5. External Forwarding
-        targets = sorted(list(set(await ChatRepository.get_forward_targets(cid))))
+        # 5. External Forwarding (采用基于全链路解析的新 API)
+        targets = sorted(list(set(await ChatRepository.get_all_cascade_targets(cid))))
         for i, tcid in enumerate(targets):
             if tcid == cid:
                 continue
@@ -102,28 +102,35 @@ class MediaService:
         uid = msgs[0].from_user.id if msgs[0].from_user else 0
         chat_title = msgs[0].chat.title or "Unknown"
 
-        fid_first, fuid_first, _ = MediaService._get_media_info(msgs[0])
-        if not fuid_first:
-            return False
-
         is_from_bot = (msgs[0].from_user and msgs[0].from_user.id == bot_id)
 
-        in_seen, in_forward = await MediaRepository.check_duplicate_status(cid, fuid_first)
+        # 1. 修复: 对相册内所有元素进行鉴重，彻底封堵部分重复元素绕过机制
+        is_dupe_user = False
+        is_dupe_bot = False
 
-        if in_seen:
-            if is_from_bot:
-                return False
-            else:
-                logger.info(f"♻️ [Duplicate Album] Removing existing album {gid} in chat {cid}")
-                return True
+        for m in msgs:
+            _, fuid, _ = MediaService._get_media_info(m)
+            if fuid:
+                in_s, in_f = await MediaRepository.check_duplicate_status(cid, fuid)
+                if in_s:
+                    if is_from_bot:
+                        is_dupe_bot = True
+                    else:
+                        is_dupe_user = True
+                elif in_f and not is_from_bot:
+                    is_dupe_user = True
 
-        if in_forward and not is_from_bot:
-            logger.info(f"♻️ [Duplicate Album] User attempting to post forwarded album {gid} in chat {cid}")
+        if is_dupe_user:
+            logger.info(f"♻️ [Duplicate Album] Removing existing album {gid} in chat {cid}")
             return True
+        if is_dupe_bot:
+            return False
 
-        # 1. Mark as processing for Source
-        if not await MediaRepository.add_seen_atomic(cid, fuid_first):
-            return True if not is_from_bot else False
+        # Mark all as processing for Source
+        for m in msgs:
+            _, fuid, _ = MediaService._get_media_info(m)
+            if fuid:
+                await MediaRepository.add_seen_atomic(cid, fuid)
 
         # Self-Cleaning only if NOT from bot
         if not is_from_bot:
@@ -148,8 +155,8 @@ class MediaService:
                     )
             await MediaRepository.enqueue_batch(local_items)
 
-        # 2. Forwarding to Targets
-        targets = sorted(list(set(await ChatRepository.get_forward_targets(cid))))
+        # 2. Forwarding to Targets (采用基于全链路解析的新 API)
+        targets = sorted(list(set(await ChatRepository.get_all_cascade_targets(cid))))
         for i, tcid in enumerate(targets):
             if tcid == cid:
                 continue

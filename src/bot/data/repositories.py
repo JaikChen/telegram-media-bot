@@ -32,13 +32,18 @@ class MediaRepository:
             try:
                 # Check if already forwarded or seen in the target chat (Global Deduplication)
                 sql_check = """
-                    SELECT 1 FROM seen WHERE chat_id=? AND file_unique_id=?
-                    UNION
-                    SELECT 1 FROM forward_seen WHERE chat_id=? AND file_unique_id=?
-                    LIMIT 1
-                """
+                            SELECT 1 \
+                            FROM seen \
+                            WHERE chat_id = ? \
+                              AND file_unique_id = ?
+                            UNION
+                            SELECT 1 \
+                            FROM forward_seen \
+                            WHERE chat_id = ? \
+                              AND file_unique_id = ? LIMIT 1 \
+                            """
                 async with db.execute(
-                    sql_check, (target_chat_id, item["fuid"], target_chat_id, item["fuid"])
+                        sql_check, (target_chat_id, item["fuid"], target_chat_id, item["fuid"])
                 ) as cursor:
                     if await cursor.fetchone():
                         logger.info(f"♻️ [Deduplicated] Media {item['fuid']} already exists in target {target_chat_id}")
@@ -50,10 +55,11 @@ class MediaRepository:
                     (target_chat_id, item["fuid"], now),
                 )
 
-                sql_q = """INSERT INTO forward_queue 
-                         (target_chat_id, media_type, file_id, caption, has_spoiler, 
-                          file_unique_id, media_group_id, created_at, priority, 
-                          source_chat_id, source_msg_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                sql_q = """INSERT INTO forward_queue
+                           (target_chat_id, media_type, file_id, caption, has_spoiler,
+                            file_unique_id, media_group_id, created_at, priority,
+                            source_chat_id, source_msg_id) \
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
                 args_q = (
                     target_chat_id,
                     item["mt"],
@@ -83,21 +89,27 @@ class MediaRepository:
         async with db_manager._write_lock:
             db = await db_manager.get_db()
             try:
-                # Check if first item already exists in target (Global Deduplication)
-                sql_check = """
-                    SELECT 1 FROM seen WHERE chat_id=? AND file_unique_id=?
-                    UNION
-                    SELECT 1 FROM forward_seen WHERE chat_id=? AND file_unique_id=?
-                    LIMIT 1
-                """
-                async with db.execute(
-                    sql_check, (target_chat_id, items[0]["fuid"], target_chat_id, items[0]["fuid"])
-                ) as cursor:
-                    if await cursor.fetchone():
-                        logger.info(
-                            f"♻️ [Deduplicated Album] Media {items[0]['fuid']} already exists in target {target_chat_id}"
-                        )
-                        return False
+                # 修复: 校验相册内的所有元素，防止打乱顺序后绕过校验
+                for it in items:
+                    sql_check = """
+                                SELECT 1 \
+                                FROM seen \
+                                WHERE chat_id = ? \
+                                  AND file_unique_id = ?
+                                UNION
+                                SELECT 1 \
+                                FROM forward_seen \
+                                WHERE chat_id = ? \
+                                  AND file_unique_id = ? LIMIT 1 \
+                                """
+                    async with db.execute(
+                            sql_check, (target_chat_id, it["fuid"], target_chat_id, it["fuid"])
+                    ) as cursor:
+                        if await cursor.fetchone():
+                            logger.info(
+                                f"♻️ [Deduplicated Album] Media {it['fuid']} already exists in target {target_chat_id}"
+                            )
+                            return False
 
                 now = int(time.time())
                 for it in items:
@@ -106,10 +118,11 @@ class MediaRepository:
                         (target_chat_id, it["fuid"], now),
                     )
 
-                    sql_q = """INSERT INTO forward_queue 
-                             (target_chat_id, media_type, file_id, caption, has_spoiler, 
-                              file_unique_id, media_group_id, created_at, priority, 
-                              source_chat_id, source_msg_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+                    sql_q = """INSERT INTO forward_queue
+                               (target_chat_id, media_type, file_id, caption, has_spoiler,
+                                file_unique_id, media_group_id, created_at, priority,
+                                source_chat_id, source_msg_id) \
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
                     args_q = (
                         target_chat_id,
                         it["mt"],
@@ -136,13 +149,13 @@ class MediaRepository:
     async def get_forward_queue_counts() -> List[tuple]:
         """Returns counts of pending tasks grouped by target chat."""
         sql = """
-            SELECT q.target_chat_id, c.title, COUNT(*) 
-            FROM forward_queue q
-            LEFT JOIN chats c ON q.target_chat_id = c.chat_id
-            WHERE q.status = 0
-            GROUP BY q.target_chat_id
-            ORDER BY COUNT(*) DESC
-        """
+              SELECT q.target_chat_id, c.title, COUNT(*)
+              FROM forward_queue q
+                       LEFT JOIN chats c ON q.target_chat_id = c.chat_id
+              WHERE q.status = 0
+              GROUP BY q.target_chat_id
+              ORDER BY COUNT(*) DESC \
+              """
         return await execute_sql(sql, fetchall=True)
 
     @staticmethod
@@ -152,7 +165,8 @@ class MediaRepository:
         now = int(time.time())
         stmts = []
         for it in items:
-            sql = """INSERT OR IGNORE INTO forward_queue 
+            sql = """INSERT \
+            OR IGNORE INTO forward_queue 
                      (target_chat_id, media_type, file_id, caption, has_spoiler, 
                       file_unique_id, media_group_id, created_at, priority, 
                       source_chat_id, source_msg_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
@@ -176,27 +190,25 @@ class MediaRepository:
     async def fetch_queue_batch(limit: int = 50) -> List[tuple]:
         """
         Atomically fetches and marks a batch of items as 'processing'.
-        Compatible with older SQLite versions lacking RETURNING support.
         """
         now = int(time.time())
-        # Use an explicit transaction to ensure atomic SELECT then UPDATE
         async with db_manager._write_lock:
             db = await db_manager.get_db()
             try:
-                # 1. Fetch the rows first
+                # 修复：将 updated_at 超时容错从 600 秒提升至 3600 秒 (1小时)，防止大视频上传慢被另一个工人二次抓取导致重复发送
                 select_sql = """
-                    SELECT * FROM forward_queue
-                    WHERE (status = 0 AND created_at <= ?) OR (status = 1 AND updated_at < ?)
-                    ORDER BY priority DESC, created_at ASC, id ASC
-                    LIMIT ?
-                """
-                async with db.execute(select_sql, (now, now - 600, limit)) as cursor:
+                             SELECT * \
+                             FROM forward_queue
+                             WHERE (status = 0 AND created_at <= ?) \
+                                OR (status = 1 AND updated_at < ?)
+                             ORDER BY priority DESC, created_at ASC, id ASC LIMIT ? \
+                             """
+                async with db.execute(select_sql, (now, now - 3600, limit)) as cursor:
                     rows = await cursor.fetchall()
 
                 if not rows:
                     return []
 
-                # 2. Mark those specific rows as processing
                 row_ids = [r[0] for r in rows]
                 placeholders = ",".join(["?"] * len(row_ids))
                 update_sql = f"""
@@ -248,9 +260,10 @@ class MediaRepository:
 
     @staticmethod
     async def check_duplicate_status(chat_id: str, file_unique_id: str) -> Tuple[bool, bool]:
-        """Returns (in_seen, in_forward_seen)."""
-        in_seen = await execute_sql("SELECT 1 FROM seen WHERE chat_id=? AND file_unique_id=? LIMIT 1", (chat_id, file_unique_id), fetchone=True)
-        in_fw = await execute_sql("SELECT 1 FROM forward_seen WHERE chat_id=? AND file_unique_id=? LIMIT 1", (chat_id, file_unique_id), fetchone=True)
+        in_seen = await execute_sql("SELECT 1 FROM seen WHERE chat_id=? AND file_unique_id=? LIMIT 1",
+                                    (chat_id, file_unique_id), fetchone=True)
+        in_fw = await execute_sql("SELECT 1 FROM forward_seen WHERE chat_id=? AND file_unique_id=? LIMIT 1",
+                                  (chat_id, file_unique_id), fetchone=True)
         return (in_seen is not None, in_fw is not None)
 
     @staticmethod
@@ -327,22 +340,16 @@ class MediaRepository:
 
     @staticmethod
     async def peek_queue() -> Optional[int]:
-        """
-        Returns the created_at timestamp of the next item in the queue.
-        Returns 0 if an item is ready right now, or a future timestamp if items are staggered.
-        Returns None if the queue is completely empty.
-        """
         now = int(time.time())
-        # First, check if there's anything ready NOW
+        # 同步超时时间设为 3600
         ready = await execute_sql(
             "SELECT 1 FROM forward_queue WHERE (status = 0 AND created_at <= ?) OR (status = 1 AND updated_at < ?) LIMIT 1",
-            (now, now - 600),
+            (now, now - 3600),
             fetchone=True,
         )
         if ready:
             return 0
 
-        # If nothing is ready now, find the NEXT future item's timestamp
         future = await execute_sql(
             "SELECT created_at FROM forward_queue WHERE status = 0 AND created_at > ? ORDER BY created_at ASC LIMIT 1",
             (now,),
@@ -350,7 +357,7 @@ class MediaRepository:
         )
         if future:
             return future[0]
-            
+
         return None
 
     @staticmethod
@@ -481,6 +488,33 @@ class ChatRepository:
             "SELECT target_chat_id FROM forward_map WHERE source_chat_id=?", (source_chat_id,), fetchall=True
         )
         return [r[0] for r in rows]
+
+    @staticmethod
+    async def get_all_cascade_targets(source_chat_id: str) -> List[str]:
+        """
+        [新增功能] 链路转发解析器。
+        Fetches all cascaded forward targets (A->B->C) avoiding infinite loops.
+        """
+        rows = await execute_sql("SELECT source_chat_id, target_chat_id FROM forward_map", fetchall=True)
+        adj = {}
+        for src, tgt in rows:
+            if src not in adj:
+                adj[src] = []
+            adj[src].append(tgt)
+
+        targets = set()
+        queue = [source_chat_id]
+        visited = set([source_chat_id])
+
+        while queue:
+            curr = queue.pop(0)
+            for nxt in adj.get(curr, []):
+                if nxt not in visited:
+                    visited.add(nxt)
+                    targets.add(nxt)
+                    queue.append(nxt)
+
+        return list(targets)
 
     @staticmethod
     async def get_chat_rules(chat_id: str) -> List[str]:
