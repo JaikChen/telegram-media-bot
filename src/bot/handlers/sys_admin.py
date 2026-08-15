@@ -25,58 +25,87 @@ logger = logging.getLogger(__name__)
 
 @admin_only
 async def handle_addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Add a dynamic administrator to the database (Global Admin only)."""
+    """Add a permanent full-featured administrator to both .env and the database."""
     if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     if len(context.args or []) < 1:
-        await update.message.reply_text(get_text("args_error"))
+        await update.message.reply_text("❌ 用法：`/addadmin <Telegram数字ID>`", parse_mode="Markdown")
         return
 
     try:
-        new_admin_id = context.args[0]
+        new_admin_id = context.args[0].strip()
+        uid_int = int(new_admin_id)
+        # 1. Persist to .env and memory
+        config.add_admin_id(uid_int)
+        # 2. Persist to database
         await AdminRepository.add_admin(new_admin_id)
-        await update.message.reply_text(get_text("admin_added", new_admin_id))
-        await log_event(context.bot, f"添加管理员: {new_admin_id}", category="system")
-        logger.info(f"Admin added: {new_admin_id} by {update.effective_user.id}")
+
+        await update.message.reply_text(
+            f"👑 已成功将 `{new_admin_id}` 添加为 **固定全功能管理员**！\n(已持久化同步至 `.env` 配置文件与数据库)",
+            parse_mode="Markdown",
+        )
+        await log_event(context.bot, f"👑 <b>新增固定全功能管理员</b>: <code>{new_admin_id}</code>", category="system")
+        logger.info(f"Fixed Admin added: {new_admin_id} by {update.effective_user.id}")
+    except ValueError:
+        await update.message.reply_text("❌ 请输入合法的 Telegram 数字 ID")
     except Exception as e:
         logger.error(f"Error in handle_addadmin: {e}")
+        await update.message.reply_text(f"❌ 添加管理员失败: {e}")
 
 
 @admin_only
 async def handle_deladmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Remove a dynamic administrator from the database (Global Admin only)."""
+    """Remove a permanent full-featured administrator from both .env and the database."""
     if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     if len(context.args or []) < 1:
-        await update.message.reply_text(get_text("args_error"))
+        await update.message.reply_text("❌ 用法：`/deladmin <Telegram数字ID>`", parse_mode="Markdown")
         return
 
     try:
-        admin_id = context.args[0]
+        admin_id = context.args[0].strip()
+        uid_int = int(admin_id)
+        # 1. Remove from .env and memory
+        config.remove_admin_id(uid_int)
+        # 2. Remove from database
         await AdminRepository.delete_admin(admin_id)
-        await update.message.reply_text(get_text("admin_deleted", admin_id))
-        await log_event(context.bot, f"移除管理员: {admin_id}", category="system")
+
+        await update.message.reply_text(
+            f"🗑 已移除管理员 `{admin_id}` (已从 `.env` 和数据库同步删除)。", parse_mode="Markdown"
+        )
+        await log_event(context.bot, f"🗑 <b>移除管理员</b>: <code>{admin_id}</code>", category="system")
         logger.info(f"Admin removed: {admin_id} by {update.effective_user.id}")
+    except ValueError:
+        await update.message.reply_text("❌ 请输入合法的 Telegram 数字 ID")
     except Exception as e:
         logger.error(f"Error in handle_deladmin: {e}")
+        await update.message.reply_text(f"❌ 移除管理员失败: {e}")
 
 
 @admin_only
 async def handle_listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """List all administrators, both fixed (from config) and dynamic (from DB)."""
+    """List all administrators with full super admin privileges."""
     if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
-        admins = await AdminRepository.list_admins()
-        fixed = sorted(config.ADMIN_IDS)
-        reply = "👑 管理员列表：\n\n• 固定：\n" + "\n".join(f" - {a}" for a in fixed)
-        reply += "\n\n• 动态：\n" + ("\n".join(f" - {a}" for a in admins) if admins else " - (空)")
-        await update.message.reply_text(reply)
+        db_admins = await AdminRepository.list_admins()
+        env_admins = [str(a) for a in config.get_admin_ids()]
+        all_admins = sorted(list(set(db_admins + env_admins)), key=lambda x: int(x) if x.isdigit() else 0)
+
+        reply = "👑 **固定全功能超级管理员列表**：\n\n"
+        if all_admins:
+            for a in all_admins:
+                reply += f"• `{a}`\n"
+        else:
+            reply += "• (无)\n"
+        reply += "\n💡 *所有列出的管理员均享有最高系统运维、转发控制及所有频道无限制管理权限。*"
+        await update.message.reply_text(reply, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"Error in handle_listadmins: {e}")
+
 
 
 @admin_only

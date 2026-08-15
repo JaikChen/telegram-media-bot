@@ -18,6 +18,8 @@ PROXY_URL = os.getenv("PROXY_URL") or os.getenv("HTTPS_PROXY") or os.getenv("HTT
 
 
 def get_admin_ids():
+    if ENV_FILE.exists():
+        load_dotenv(ENV_FILE, override=True)
     raw_combined = f"{os.getenv('ADMIN_IDS', '')},{os.getenv('ADMIN_ID', '')}"
     admin_ids = []
     for part in raw_combined.replace(" ", ",").replace(";", ",").split(","):
@@ -28,6 +30,44 @@ def get_admin_ids():
             except ValueError:
                 pass
     return sorted(list(set(admin_ids)))
+
+
+def add_admin_id(new_id: int):
+    """Adds a new admin ID to memory and persists to .env file."""
+    global ADMIN_IDS
+    ADMIN_IDS = get_admin_ids()
+    if new_id not in ADMIN_IDS:
+        ADMIN_IDS.append(new_id)
+        ADMIN_IDS.sort()
+        admin_str = ",".join(str(i) for i in ADMIN_IDS)
+        try:
+            if not ENV_FILE.exists():
+                ENV_FILE.touch()
+            set_key(str(ENV_FILE), "ADMIN_ID", admin_str)
+            set_key(str(ENV_FILE), "ADMIN_IDS", admin_str)
+            os.environ["ADMIN_ID"] = admin_str
+            os.environ["ADMIN_IDS"] = admin_str
+        except Exception as e:
+            print("Error persisting ADMIN_ID to .env:", e)
+
+
+def remove_admin_id(target_id: int):
+    """Removes an admin ID from memory and persists to .env file."""
+    global ADMIN_IDS
+    ADMIN_IDS = get_admin_ids()
+    if target_id in ADMIN_IDS:
+        ADMIN_IDS.remove(target_id)
+        admin_str = ",".join(str(i) for i in ADMIN_IDS)
+        try:
+            if not ENV_FILE.exists():
+                ENV_FILE.touch()
+            set_key(str(ENV_FILE), "ADMIN_ID", admin_str)
+            set_key(str(ENV_FILE), "ADMIN_IDS", admin_str)
+            os.environ["ADMIN_ID"] = admin_str
+            os.environ["ADMIN_IDS"] = admin_str
+        except Exception as e:
+            print("Error updating ADMIN_ID in .env:", e)
+
 
 def ensure_config():
     """Ensure critical configuration exists, prompt user if missing."""
