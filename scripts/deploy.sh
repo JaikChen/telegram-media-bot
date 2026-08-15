@@ -145,30 +145,27 @@ restart_bot() {
     # Ensure directories exist
     mkdir -p "$APP_DIR/data" "$APP_DIR/logs" "$APP_DIR/backups"
 
-    if command -v systemctl &> /dev/null && systemctl is-active --quiet "$SERVICE_NAME"; then
+    # Always clean orphan bot processes and stale lock
+    log_info "Cleaning up old bot processes and lock..."
+    pkill -9 -f "src/main.py" 2>/dev/null || true
+    sleep 1
+    rm -f "$APP_DIR/data/bot.lock"
+
+    if [ -f "/etc/systemd/system/$SERVICE_NAME.service" ]; then
         log_info "Restarting systemd service: $SERVICE_NAME"
+        sudo systemctl daemon-reload
         sudo systemctl restart "$SERVICE_NAME"
+        sleep 2
+        sudo systemctl status "$SERVICE_NAME" --no-pager
         log_info "✅ Service restarted via systemd."
     else
-        log_warn "Service $SERVICE_NAME is not active or not installed as a systemd service."
-
-        # Cleanup existing bot processes
-        log_info "Cleaning up existing bot processes..."
-        if command -v pkill &> /dev/null; then
-            pkill -f "python src/main.py" || true
-        else
-            log_warn "pkill not found. Skipping process cleanup."
-        fi
+        log_info "Starting bot via nohup in background..."
+        nohup "$VENV_DIR/bin/python" src/main.py >> "$APP_DIR/logs/bot.log" 2>&1 &
+        BOT_PID=$!
+        log_info "✅ Bot started in background (PID: $BOT_PID)."
         sleep 2
-
-        log_info "Attempting to start bot..."
-        if command -v nohup &> /dev/null; then
-            nohup "$VENV_DIR/bin/python" src/main.py > "$APP_DIR/logs/bot.log" 2>&1 &
-            log_info "✅ Bot started in background (PID: $!)."
-        else
-            log_info "nohup not found. Starting bot in foreground (press Ctrl+C to stop)."
-            "$VENV_DIR/bin/python" src/main.py
-        fi
+        echo -e "${YELLOW}Recent Logs:${NC}"
+        tail -n 15 "$APP_DIR/logs/bot.log" || true
     fi
 }
 
