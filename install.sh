@@ -33,10 +33,16 @@ echo -e "${BLUE}==================================================${NC}"
 log_step "Installing System Dependencies"
 if command -v apt-get &> /dev/null; then
     sudo apt-get update -qq
-    sudo apt-get install -y -qq python3 python3-venv git curl bc > /dev/null
-    log_info "✅ System dependencies installed."
+    sudo apt-get install -y -qq python3 python3-venv python3-pip git curl bc > /dev/null
+    log_info "✅ System dependencies installed (Debian/Ubuntu)."
+elif command -v dnf &> /dev/null; then
+    sudo dnf install -y python3.11 python3.11-pip git curl bc > /dev/null 2>&1 || sudo dnf install -y python3 python3-pip git curl bc
+    log_info "✅ System dependencies installed (RHEL/CentOS/AlmaLinux)."
+elif command -v yum &> /dev/null; then
+    sudo yum install -y python3.11 python3.11-pip git curl bc > /dev/null 2>&1 || sudo yum install -y python3 python3-pip git curl bc
+    log_info "✅ System dependencies installed (CentOS)."
 else
-    log_info "⚠️ Non-Debian system detected. Please ensure python3, venv, and git are installed."
+    log_info "⚠️ Please ensure python3.10+, venv, and git are installed."
 fi
 
 # 2. Setup .env

@@ -30,7 +30,13 @@ check_environment() {
     log_step "Environment Self-Check"
 
     # 智能寻找可用的 Python 高版本解释器
-    if command -v python3.11 &> /dev/null; then
+    if command -v python3.14 &> /dev/null; then
+        PYTHON_EXE="python3.14"
+    elif command -v python3.13 &> /dev/null; then
+        PYTHON_EXE="python3.13"
+    elif command -v python3.12 &> /dev/null; then
+        PYTHON_EXE="python3.12"
+    elif command -v python3.11 &> /dev/null; then
         PYTHON_EXE="python3.11"
     elif command -v python3.10 &> /dev/null; then
         PYTHON_EXE="python3.10"
