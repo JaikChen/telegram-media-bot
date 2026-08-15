@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes
 from src.bot.data.repositories import ChatRepository, VoteRepository
 from src.cleaner.engine import clean_caption
 from src.bot.core.locales import get_text
-from src.bot.utils.helpers import admin_only, check_chat_permission, reply_success, is_global_admin, log_event
+from src.bot.utils.helpers import admin_only, check_chat_permission, reply_success, is_super_admin, is_global_admin, log_event
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ async def handle_setrules(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     try:
         target_chats = []
         if target_input.lower() == "all":
-            if not is_global_admin(update.message.from_user.id):
+            if not await is_super_admin(update.message.from_user.id):
                 await update.message.reply_text(get_text("no_permission"))
                 return
             target_chats = await ChatRepository.get_all_chat_ids()
@@ -131,7 +131,7 @@ async def handle_addrule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         target_chats = []
         if target_input.lower() == "all":
-            if not is_global_admin(update.message.from_user.id):
+            if not await is_super_admin(update.message.from_user.id):
                 await update.message.reply_text(get_text("no_permission"))
                 return
             target_chats = await ChatRepository.get_all_chat_ids()
@@ -174,7 +174,7 @@ async def handle_delrule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         target_chats = []
         if target_input.lower() == "all":
-            if not is_global_admin(update.message.from_user.id):
+            if not await is_super_admin(update.message.from_user.id):
                 await update.message.reply_text(get_text("no_permission"))
                 return
             target_chats = await ChatRepository.get_all_chat_ids()
@@ -236,7 +236,7 @@ async def handle_clearrules(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     try:
         target_chats = []
         if target_input.lower() == "all":
-            if not is_global_admin(update.message.from_user.id):
+            if not await is_super_admin(update.message.from_user.id):
                 await update.message.reply_text(get_text("no_permission"))
                 return
             target_chats = await ChatRepository.get_all_chat_ids()
@@ -286,7 +286,7 @@ async def handle_addkw(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         target_chats = []
         if target_input.lower() == "all":
-            if not is_global_admin(update.message.from_user.id):
+            if not await is_super_admin(update.message.from_user.id):
                 await update.message.reply_text(get_text("no_permission"))
                 return
             target_chats = await ChatRepository.get_all_chat_ids()
@@ -559,7 +559,7 @@ async def handle_listallforwards(update: Update, context: ContextTypes.DEFAULT_T
     """List all active forwarding chains across the entire bot."""
     if not update.message:
         return
-    if not is_global_admin(update.message.from_user.id):
+    if not await is_super_admin(update.message.from_user.id):
         await update.message.reply_text(get_text("no_permission"))
         return
 

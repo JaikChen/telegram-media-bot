@@ -10,26 +10,38 @@ logger = logging.getLogger(__name__)
 
 def is_global_admin(user_id: int | str) -> bool:
     """Checks if the user is a super admin from config."""
-    return int(user_id) in config.ADMIN_IDS
+    try:
+        return int(user_id) in config.ADMIN_IDS
+    except (ValueError, TypeError):
+        return False
+
+
+async def is_super_admin(user_id: int | str) -> bool:
+    """
+    [全功能超级管理员鉴权]
+    Checks if the user has full global administrative privileges
+    (either configured in .env or dynamically added to database).
+    """
+    if is_global_admin(user_id):
+        return True
+    try:
+        admins = await AdminRepository.list_admins()
+        return str(user_id) in admins
+    except Exception:
+        return False
 
 
 async def is_admin(update: Update) -> bool:
-    """Checks if the sender/caller has bot administrative privileges (Global or dynamic)."""
+    """Checks if the sender/caller has full administrative privileges (Global or dynamic)."""
     user = update.effective_user
     if not user:
         return False
-
-    uid = str(user.id)
-    if is_global_admin(uid):
-        return True
-
-    admins = await AdminRepository.list_admins()
-    return uid in admins
+    return await is_super_admin(user.id)
 
 
 async def check_chat_permission(user_id: int | str, chat_id: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Checks if user has admin privileges in a specific chat."""
-    if is_global_admin(user_id):
+    """Checks if user has admin privileges in a specific chat or is a full super admin."""
+    if await is_super_admin(user_id):
         return True
 
     try:
@@ -37,6 +49,7 @@ async def check_chat_permission(user_id: int | str, chat_id: str, context: Conte
         return member.status in ["creator", "administrator"]
     except Exception:
         return False
+
 
 
 def admin_only(func):

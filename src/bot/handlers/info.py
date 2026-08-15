@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from src.bot.data.repositories import MediaRepository, ChatRepository, VoteRepository, execute_sql
-from src.bot.utils.helpers import admin_only, is_global_admin, is_admin, escape_markdown, check_chat_permission
+from src.bot.utils.helpers import admin_only, is_super_admin, is_global_admin, is_admin, escape_markdown, check_chat_permission
 from src.bot.core.locales import get_text
 
 logger = logging.getLogger(__name__)
@@ -29,8 +29,9 @@ async def handle_listchats(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         uid = update.message.from_user.id
         allowed_chats = []
 
-        if is_global_admin(uid):
+        if await is_super_admin(uid):
             allowed_chats = rows
+
         else:
             status_msg = await update.message.reply_text("⏳ 正在检查权限...")
             for chat_id, title in rows:
@@ -106,7 +107,7 @@ async def handle_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         uid = update.message.from_user.id
         allowed_rows = []
 
-        if is_global_admin(uid):
+        if await is_super_admin(uid):
             allowed_rows = rows
         else:
             status_msg = await update.message.reply_text("⏳ 正在获取统计数据...")
@@ -132,7 +133,7 @@ async def handle_queue_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     try:
-        if not is_global_admin(update.message.from_user.id):
+        if not await is_super_admin(update.message.from_user.id):
             await update.message.reply_text(get_text("no_permission"))
             return
 
@@ -158,9 +159,8 @@ async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     try:
         uid = update.message.from_user.id if update.message.from_user else 0
-        is_global = is_global_admin(uid)
-        is_dynamic = await is_admin(update)
-        role = "固定管理员 (Super Admin)" if is_global else ("管理员 (Admin)" if is_dynamic else "普通用户 (User)")
+        is_global = await is_super_admin(uid)
+        role = "全功能管理员 (Super Admin)" if is_global else "普通用户 (User)"
         target_hint = " -100频道ID"
         min_s, max_s = await MediaRepository.get_delay_settings()
         delay_status = f"{min_s}~{max_s}秒" if max_s > 0 else "关闭(实时)"

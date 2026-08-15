@@ -18,16 +18,16 @@ PROXY_URL = os.getenv("PROXY_URL") or os.getenv("HTTPS_PROXY") or os.getenv("HTT
 
 
 def get_admin_ids():
-    raw_admins = os.getenv("ADMIN_IDS", "").split(",")
+    raw_combined = f"{os.getenv('ADMIN_IDS', '')},{os.getenv('ADMIN_ID', '')}"
     admin_ids = []
-    for i in raw_admins:
-        clean_i = i.strip().strip("'").strip('"')
-        if clean_i:
+    for part in raw_combined.replace(" ", ",").replace(";", ",").split(","):
+        clean_part = part.strip().strip("'").strip('"')
+        if clean_part:
             try:
-                admin_ids.append(int(clean_i))
+                admin_ids.append(int(clean_part))
             except ValueError:
-                print(f"Warning: Invalid Admin ID ignored: {i}")
-    return admin_ids
+                pass
+    return sorted(list(set(admin_ids)))
 
 def ensure_config():
     """Ensure critical configuration exists, prompt user if missing."""

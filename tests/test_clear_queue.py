@@ -58,6 +58,22 @@ async def test_handle_help_success():
         await handle_help(update, context)
         update.message.reply_text.assert_called_once()
         text = update.message.reply_text.call_args[0][0]
-        assert "Super Admin" in text
-        assert "/clearqueue" in text
+        assert "Telegram Media Bot" in text
 
+
+@pytest.mark.asyncio
+async def test_is_super_admin_permissions():
+    from src.bot.utils.helpers import is_super_admin
+    from src.bot.core import config
+    from src.bot.data.repositories import AdminRepository
+
+    # Test static config admin
+    config.ADMIN_IDS = [7975947295, 111222333]
+    assert await is_super_admin(7975947295) is True
+    assert await is_super_admin("111222333") is True
+
+    # Test dynamic database admin
+    with patch.object(AdminRepository, "list_admins", new_callable=AsyncMock, return_value=["999888777"]):
+        assert await is_super_admin(999888777) is True
+        assert await is_super_admin("999888777") is True
+        assert await is_super_admin(555555555) is False

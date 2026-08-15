@@ -16,7 +16,7 @@ from telegram.error import BadRequest, Forbidden
 
 from src.bot.core import config
 from src.bot.data.repositories import AdminRepository, ChatRepository, MediaRepository, execute_sql
-from src.bot.utils.helpers import is_global_admin, log_event, escape_markdown, admin_only
+from src.bot.utils.helpers import is_super_admin, is_global_admin, log_event, escape_markdown, admin_only
 from src.bot.core.locales import get_text
 from src.bot.domain.forwarding import ForwardingService
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 @admin_only
 async def handle_addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Add a dynamic administrator to the database (Global Admin only)."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     if len(context.args or []) < 1:
@@ -46,7 +46,7 @@ async def handle_addadmin(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 @admin_only
 async def handle_deladmin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Remove a dynamic administrator from the database (Global Admin only)."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     if len(context.args or []) < 1:
@@ -66,7 +66,7 @@ async def handle_deladmin(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 @admin_only
 async def handle_listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """List all administrators, both fixed (from config) and dynamic (from DB)."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -82,7 +82,7 @@ async def handle_listadmins(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 @admin_only
 async def handle_backupdb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the database file to the global admin for backup."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -105,7 +105,7 @@ async def handle_backupdb(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 @admin_only
 async def handle_restoredb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Restore the database by uploading a backup file (replies required)."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     msg = update.message
@@ -136,7 +136,7 @@ async def handle_restoredb(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 @admin_only
 async def handle_setlog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Configure the Telegram channel for event logging."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     if len(context.args or []) < 1:
@@ -159,7 +159,7 @@ async def handle_setlog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 @admin_only
 async def handle_dellog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Disable event logging to Telegram."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -173,7 +173,7 @@ async def handle_dellog(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 @admin_only
 async def handle_setlogfilter(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Set which categories of events should be logged to the log channel."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     valid_types = ["clean", "duplicate", "forward", "error", "system"]
@@ -202,7 +202,7 @@ async def handle_setlogfilter(update: Update, context: ContextTypes.DEFAULT_TYPE
 @admin_only
 async def handle_cleanchats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Identify and remove chats where the bot is no longer a member."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -239,7 +239,7 @@ async def handle_cleanchats(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 @admin_only
 async def handle_cleandb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Perform database maintenance: clear expired records and vacuum."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -256,7 +256,7 @@ async def handle_cleandb(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 @admin_only
 async def handle_leave(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Force the bot to leave a specific chat."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     if len(context.args or []) < 1:
@@ -277,7 +277,7 @@ async def handle_leave(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 @admin_only
 async def handle_setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Configure the random delay range for message forwarding."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -321,7 +321,7 @@ async def handle_setdelay(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 @admin_only
 async def handle_pause(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Globally pause the forwarding queue."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -335,7 +335,7 @@ async def handle_pause(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 @admin_only
 async def handle_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Globally resume the forwarding queue and wake the worker."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -354,7 +354,7 @@ async def handle_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 @admin_only
 async def handle_dlq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """View the most recent failed tasks in the Dead Letter Queue."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -379,7 +379,7 @@ async def handle_dlq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 @admin_only
 async def handle_retry_dlq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Retry failed tasks from the Dead Letter Queue."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     if not context.args:
@@ -440,7 +440,7 @@ async def handle_retry_dlq(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 @admin_only
 async def handle_clear_dlq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Clear all tasks from the Dead Letter Queue."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         return
 
     try:
@@ -454,7 +454,7 @@ async def handle_clear_dlq(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 @admin_only
 async def handle_repair_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Manually restart the forwarding worker if it hangs and reset all processing states."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         await update.message.reply_text(get_text("no_permission"))
         return
 
@@ -487,7 +487,7 @@ async def handle_repair_queue(update: Update, context: ContextTypes.DEFAULT_TYPE
 @admin_only
 async def handle_clear_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Clear tasks from the forward queue (all or specific chat)."""
-    if not update.message or not is_global_admin(update.message.from_user.id):
+    if not update.message or not await is_super_admin(update.message.from_user.id):
         await update.message.reply_text(get_text("no_permission"))
         return
 
