@@ -1,0 +1,1 @@
+#!/bin/bash`nset -e`nAPP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`nchmod +x "$APP_DIR/scripts/deploy.sh"`nexec bash "$APP_DIR/scripts/deploy.sh" "$@"
