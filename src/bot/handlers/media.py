@@ -12,9 +12,11 @@ from src.bot.utils.helpers import is_admin
 
 logger = logging.getLogger(__name__)
 
-# Album aggregation cache
+# Album aggregation & locking structures
 album_cache = TTLCache(maxsize=5000, ttl=600)
+processed_gids = TTLCache(maxsize=10000, ttl=300)
 debounce_tasks = {}
+album_locks = {}
 
 
 async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -44,10 +46,13 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 2. Handle Albums (Media Groups)
     if msg.media_group_id:
         gid = msg.media_group_id
-        if gid not in album_cache:
-            album_cache[gid] = {"messages": [], "last_arrival": 0}
+        if gid in processed_gids:
+            return
 
-        album_cache[gid]["messages"].append(msg)
+        if gid not in album_cache:
+            album_cache[gid] = {"messages": {}, "last_arrival": 0}
+
+        album_cache[gid]["messages"][msg.message_id] = msg
         album_cache[gid]["last_arrival"] = asyncio.get_event_loop().time()
 
         if gid not in debounce_tasks:
@@ -63,43 +68,53 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.warning(f"⚠️ Could not delete source message: {e}")
 
-        await ForwardingService.trigger_worker(context)
+    await ForwardingService.trigger_worker(context)
 
 
 async def process_album_debounce(context: ContextTypes.DEFAULT_TYPE, gid: str, cid: str, smid: int):
-    """Wait for all items in an album to arrive before processing."""
-    start_time = asyncio.get_event_loop().time()
-    while True:
-        await asyncio.sleep(3.5)
-        data = album_cache.get(gid)
-        if not data:
-            break
+    """Wait for all items in an album to arrive before processing atomically."""
+    if gid not in album_locks:
+        album_locks[gid] = asyncio.Lock()
 
-        now = asyncio.get_event_loop().time()
-        if now - data["last_arrival"] >= 2.0 or now - start_time > 20.0:
-            break
+    async with album_locks[gid]:
+        if gid in processed_gids:
+            debounce_tasks.pop(gid, None)
+            return
 
-    data = album_cache.pop(gid, None)
+        start_time = asyncio.get_event_loop().time()
+        while True:
+            await asyncio.sleep(0.5)
+            data = album_cache.get(gid)
+            if not data:
+                break
 
-    if not data or not data["messages"]:
-        return
+            now = asyncio.get_event_loop().time()
+            # 2.0s of silence after last message or 12s maximum total wait
+            if now - data["last_arrival"] >= 2.0 or now - start_time > 12.0:
+                break
 
-    msgs = sorted(data["messages"], key=lambda x: x.message_id)
-    should_delete = False
-    try:
-        should_delete = await MediaService.process_album(msgs, gid, cid, smid, context.bot.id)
-    finally:
-        if gid in debounce_tasks:
-            del debounce_tasks[gid]
-        if gid in album_cache:
-            del album_cache[gid]
+        data = album_cache.pop(gid, None)
+        if not data or not data["messages"]:
+            debounce_tasks.pop(gid, None)
+            album_locks.pop(gid, None)
+            return
 
-        if should_delete:
-            try:
-                # Delete all original album messages
-                for m in msgs:
-                    await m.delete()
-            except Exception as e:
-                logger.warning(f"⚠️ Could not delete source album: {e}")
+        processed_gids[gid] = True
+        msgs = sorted(list(data["messages"].values()), key=lambda x: x.message_id)
+        should_delete = False
+        try:
+            should_delete = await MediaService.process_album(msgs, gid, cid, smid, context.bot.id)
+        except Exception as e:
+            logger.error(f"❌ Error in process_album for group {gid}: {e}")
+        finally:
+            debounce_tasks.pop(gid, None)
+            album_locks.pop(gid, None)
 
-        await ForwardingService.trigger_worker(context)
+            if should_delete:
+                try:
+                    for m in msgs:
+                        await m.delete()
+                except Exception as e:
+                    logger.warning(f"⚠️ Could not delete source album in group: {e}")
+
+            await ForwardingService.trigger_worker(context)

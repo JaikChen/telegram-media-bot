@@ -7,7 +7,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQueryHandler, filters, AIORateLimiter
+from telegram.ext import Application, MessageHandler, CommandHandler, CallbackQueryHandler, filters, AIORateLimiter, ContextTypes
 
 from src.bot.core.config import BOT_TOKEN, VERSION, UPDATE_NOTES
 from src.bot.core.logger import setup_logging
@@ -68,6 +68,7 @@ from src.bot.handlers.sys_admin import (
     handle_dlq,
     handle_retry_dlq,
     handle_clear_dlq,
+    handle_clear_queue,
     handle_repair_queue,
 )
 from src.bot.handlers.info import handle_listchats, handle_chatinfo, handle_stats, handle_queue_status, handle_help
@@ -100,6 +101,89 @@ async def post_shutdown(application: Application):
     await db_manager.close()
 
 
+class ProcessLock:
+    """
+    Robust single-instance process lock.
+    On Windows: uses a shared-access file handle + msvcrt.locking on a pre-written byte.
+    On Unix: uses fcntl exclusive lock.
+    The key fix vs. the old implementation: we open with 'a' (append) mode so we
+    never truncate the file, then check-and-lock, rather than truncating first.
+    """
+    def __init__(self, lock_path):
+        self.lock_path = str(lock_path)
+        self.fp = None
+
+    def acquire(self) -> bool:
+        import os
+        try:
+            if sys.platform == 'win32':
+                import msvcrt
+                # Open for read+write, create if missing – never truncate
+                flags = os.O_RDWR | os.O_CREAT
+                fd = os.open(self.lock_path, flags, 0o644)
+                self.fp = os.fdopen(fd, 'r+')
+                # Ensure the file has at least 1 byte so locking works
+                self.fp.seek(0, 2)  # seek to end
+                if self.fp.tell() == 0:
+                    self.fp.write(' ')
+                    self.fp.flush()
+                self.fp.seek(0)
+                try:
+                    msvcrt.locking(self.fp.fileno(), msvcrt.LK_NBLCK, 1)
+                except OSError:
+                    self.fp.close()
+                    self.fp = None
+                    return False
+                # Overwrite with our PID
+                self.fp.seek(0)
+                self.fp.write(str(os.getpid()).ljust(20))
+                self.fp.flush()
+                return True
+            else:
+                import fcntl
+                self.fp = open(self.lock_path, 'a+')
+                try:
+                    fcntl.flock(self.fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except IOError:
+                    self.fp.close()
+                    self.fp = None
+                    return False
+                self.fp.seek(0)
+                self.fp.write(str(os.getpid()).ljust(20))
+                self.fp.flush()
+                return True
+        except Exception as e:
+            if self.fp:
+                try:
+                    self.fp.close()
+                except Exception:
+                    pass
+                self.fp = None
+            return False
+
+    def release(self):
+        if self.fp:
+            try:
+                if sys.platform == 'win32':
+                    import msvcrt
+                    self.fp.seek(0)
+                    try:
+                        msvcrt.locking(self.fp.fileno(), msvcrt.LK_UNLCK, 1)
+                    except OSError:
+                        pass
+                self.fp.close()
+            except Exception:
+                pass
+            finally:
+                self.fp = None
+                import os
+                try:
+                    if os.path.exists(self.lock_path):
+                        os.remove(self.lock_path)
+                except Exception:
+                    pass
+
+
 def main():
     # Ensure critical configuration exists
     from src.bot.core.config import ensure_config
@@ -116,14 +200,43 @@ def main():
     (BASE_DIR / "logs").mkdir(parents=True, exist_ok=True)
     (BASE_DIR / "backups").mkdir(parents=True, exist_ok=True)
 
+    # Process Lock to prevent duplicate instances
+    lock = ProcessLock(BASE_DIR / "data/bot.lock")
+    if not lock.acquire():
+        print("Error: Another instance of the bot is already running. Exiting...")
+        sys.exit(1)
+
     setup_logging()
     global logger
     logger = logging.getLogger(__name__)
+    import os
+    logger.info(f"Process lock acquired by PID {os.getpid()}.")
+
+    from telegram.request import HTTPXRequest
+    proxy_val = config.PROXY_URL if config.PROXY_URL else None
+    request_cfg = HTTPXRequest(
+        proxy=proxy_val,
+        connect_timeout=15.0,
+        read_timeout=15.0,
+        write_timeout=15.0,
+        pool_timeout=5.0,
+        connection_pool_size=64,
+    )
+    get_updates_request_cfg = HTTPXRequest(
+        proxy=proxy_val,
+        connect_timeout=15.0,
+        read_timeout=30.0,
+        write_timeout=15.0,
+        pool_timeout=5.0,
+        connection_pool_size=64,
+    )
 
     app = (
         Application.builder()
         .token(token)
-        .rate_limiter(AIORateLimiter(overall_max_rate=30, overall_time_period=1))
+        .request(request_cfg)
+        .get_updates_request(get_updates_request_cfg)
+        .concurrent_updates(True)
         .post_init(post_init)
         .post_shutdown(post_shutdown)
         .build()
@@ -137,12 +250,13 @@ def main():
     )
 
     # Info Handlers
+    app.add_handler(CommandHandler("start", handle_help))
+    app.add_handler(CommandHandler("help", handle_help))
     app.add_handler(CommandHandler("listchats", handle_listchats))
     app.add_handler(CommandHandler("chatinfo", handle_chatinfo))
     app.add_handler(CommandHandler("stats", handle_stats))
     app.add_handler(CommandHandler("queue", handle_queue_status))
     app.add_handler(CommandHandler("queue_status", handle_queue_status))
-    app.add_handler(CommandHandler("help", handle_help))
 
     # Chat Management Handlers
     app.add_handler(CommandHandler("setquiet", handle_setquiet))
@@ -195,8 +309,13 @@ def main():
     app.add_handler(CommandHandler("resume", handle_resume))
     app.add_handler(CommandHandler("dlq", handle_dlq))
     app.add_handler(CommandHandler("retry_dlq", handle_retry_dlq))
+    app.add_handler(CommandHandler("retrydlq", handle_retry_dlq))
     app.add_handler(CommandHandler("clear_dlq", handle_clear_dlq))
+    app.add_handler(CommandHandler("cleardlq", handle_clear_dlq))
+    app.add_handler(CommandHandler("clear_queue", handle_clear_queue))
+    app.add_handler(CommandHandler("clearqueue", handle_clear_queue))
     app.add_handler(CommandHandler("repair_queue", handle_repair_queue))
+    app.add_handler(CommandHandler("repair", handle_repair_queue))
 
     # Interaction Handlers
     app.add_handler(CallbackQueryHandler(handle_vote_callback))
@@ -208,8 +327,23 @@ def main():
         MessageHandler(filters.UpdateType.EDITED_MESSAGE | filters.UpdateType.EDITED_CHANNEL_POST, handle_edit_caption)
     )
 
+    async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        logger.error("Exception while handling an update:", exc_info=context.error)
+
+    app.add_error_handler(error_handler)
+
     logger.info("📡 Application starting...")
-    app.run_polling(drop_pending_updates=False)
+    app.run_polling(
+        drop_pending_updates=True,
+        poll_interval=0.0,
+        timeout=10,
+        bootstrap_retries=-1,
+        allowed_updates=[
+            "message", "edited_message",
+            "channel_post", "edited_channel_post",
+            "callback_query",
+        ],
+    )
 
 
 if __name__ == "__main__":

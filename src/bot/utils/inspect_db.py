@@ -1,7 +1,15 @@
 import asyncio
 import sqlite3
+import sys
+from pathlib import Path
 
-DB_FILE = "bot.db"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.bot.core import config
+
+DB_FILE = config.DB_FILE
 
 
 async def inspect_db():

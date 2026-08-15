@@ -7,9 +7,15 @@ from dotenv import load_dotenv, set_key
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 ENV_FILE = BASE_DIR / ".env"
 
+# Load .env immediately
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE, override=True)
+
 # Bot Settings
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 ADMIN_IDS = []
+PROXY_URL = os.getenv("PROXY_URL") or os.getenv("HTTPS_PROXY") or os.getenv("HTTP_PROXY") or None
+
 
 def get_admin_ids():
     raw_admins = os.getenv("ADMIN_IDS", "").split(",")
@@ -91,6 +97,7 @@ VERSION = "3.1.0"
 SECONDS_IN_DAY = 86400
 UPDATE_NOTES = """
 - **Architectural Excellence**: Fully migrated to a standard `src/` modular layout.
-- **Enhanced Deployment**: Full Docker and `pyproject.toml` support for seamless environments.
+- **Enhanced Deployment**: Python virtualenv and `pyproject.toml` support for seamless environments.
 - **Optimized Forwarding**: Decoupled service/repository layer with transaction safety.
 """
+

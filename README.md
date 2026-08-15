@@ -1,96 +1,138 @@
 # 🤖 Telegram Media Bot (Ultimate Edition)
 
-一款 **全异步、高性能、本地化** 的 Telegram 媒体管理与搬运机器人。
-专为高并发社群设计，集成智能去重、内容净化、自动转发、相册合并、信誉体系、防刷屏等工业级功能。
+一款 **全异步、高并发、工业级** 的 Telegram 媒体搬运与内容净化机器人。
+专为频道、群组及私聊搬运设计，集成 **源频道人工转发去源**、**全链路级联转发**、**整行广告深度拦截**、**相册原子聚合**、**死信队列恢复** 与 **信誉自治体系**。
 
 ---
 
-## 🚀 核心架构优势 (Performance)
+## 🌟 核心功能一览
 
-### ⚡️ **异步并发与读写分离**
-* **AsyncIO + aiosqlite**: 全流程非阻塞 I/O，完美支持 WAL 模式，读写锁分离技术让查询性能提升数倍。
-* **内存级缓存 (TTLCache)**: 针对规则、替换词、管理员列表引入 60s 级内存缓存，大幅降低磁盘 I/O 压力。
-* **智能队列工人**: 所有的转发任务均通过后台工人处理。支持精确到秒的 **随机延迟转发**，即使首条消息也能完美遵循延迟规则，有效规避平台风控。
+### 1. 🔄 **智能去源与级联转发 (Forwarding & De-sourcing)**
+- **源频道人工转发自动去源**：向源频道人工转发带有来源的媒体时，Bot 会自动提取媒体、清洗广告并以频道身份重新发布纯净无源版本，同时自动删除带来源的人工转发原消息。
+- **私聊转发即时去源**：在私聊中将任何媒体转发给 Bot，Bot 立即返回去除来源、清除广告后的独立媒体。
+- **全链路级联分发**：支持 `A -> B -> C` 多层级自动穿透转发，自动拓扑解析，规避循环死锁。
+- **随机防封延迟**：支持 `/setdelay min max` 设置消息随机间隔（秒），平滑请求速率。
+- **队列管理与监控**：支持 `/queue` 实时查看积压队列，`/clearqueue` 一键清空积压，`/pause` 与 `/resume` 暂停/恢复调度。
 
-### 🛡️ **安全与防御 (Security)**
-* **ReDoS 预防**: 对管理员自定义正则进行长度与复杂度双重校验，防止正则表达式拒绝服务攻击。
-* **防刷屏控流**: 基于用户 ID 的滑动窗口计数器，自动惩罚在一分钟内狂发媒体的恶意用户。
-* **权限并集体系**: 融合 `.env` 静态配置与数据库动态管理员，确保权限管理的灵活性与安全性。
+### 2. 🛡️ **工业级广告拦截引擎 (Ad Cleaner Engine)**
+- **整行广告清除 (`strip_ad_lines` / `clean_lines`)**：凡是包含 URL 链接、`@` 账号提及、引流话术（如 `评论区看全集`、`置顶看完整版`、`提取码在评论区`）或自定义关键词的行，直接整行剔除，保留其他正常描述。
+- **智能删链 (`clean_links`)** 与 **严格删链 (`strip_all_if_links`)**：支持清除 Markdown 嵌入超链接、Telegram TextLink 实体链接及各类 URL。
+- **隐形字符清洗**：自动过滤零宽字符、从右到左控制符等 24 种隐形欺骗字符。
+- **关键词模式**：支持普通字词与正则表达式 (`/addkw`)，提供温和按行过滤 (`clean_keywords`) 与严格整条清空 (`block_keywords`)。
+- **文本替换与页脚**：支持全局或单频道关键词替换 (`/addreplace`) 与自定义尾巴 (`/setfooter`)。
 
----
+### 3. 📦 **全媒体格式与相册支持 (Media & Album)**
+- **全格式覆盖**：支持图片 (Photo)、视频 (Video)、动图 (Animation)、文件 (Document)、音频 (Audio)、语音 (Voice)、视频圆视频 (Video Note)、贴纸 (Sticker)。
+- **相册 (MediaGroup) 原子聚合**：通过滑动时间窗口（Debounce）聚合相册内所有分卷，统一清洗文案后打包发送，保证相册完整性与顺序。
 
-## ✨ 独家特色功能 (Features)
-
-### 📁 **全媒体类型支持 (Full Media Support)**
-* **覆盖全场景**: 不再局限于图片和视频。新增对 **文件 (Document)、音频 (Audio)、语音 (Voice)、视频消息 (Video Note) 以及 贴纸 (Sticker)** 的全面支持。
-* **深度净化**: 所有支持的媒体类型在转发时均会通过净化引擎，自动剥离原始转发来源，并根据频道规则重写文案。
-
-### 🔄 **消息联动编辑同步 (Edit Sync)**
-* **无缝同步**: 当群组内的消息说明（Caption）被修改时，Bot 会自动检索所有已转发的目标频道，并同步调用 API 修改对应的文案，确保信息的一致性。
-
-### 🎖️ **社群信誉自治 (Karma System)**
-* **动态白名单**: 利用内置投票系统，自动累计用户的 Upvote/Downvote 净值。信誉极佳的用户将自动获得白名单豁免，免除内容审查。
-
-### 🛡️ **强制剧透马赛克 (Spoiler Enforcement)**
-* **合规检查**: 支持 `require_spoiler` 规则。若启用，所有未手动勾选“隐藏媒体”或未携带 `#nsfw` 标签的媒体将被自动拦截，确保频道内容合规。
-
-### 📊 **本地运营周报 (Local Analytics)**
-* **数据闭环**: 每周日晚 20:00 自动生成纯文本活跃度报告。完全基于 SQLite 本地聚合查询，无需任何外部 API。
-
-### 💀 **死信队列管理 (DLQ Manager)**
-* **容错恢复**: 针对因 403 (被踢出) 或 400 (格式错误) 导致失败的任务，自动移入 `dead_letter_queue`。支持管理员通过 `/dlq` 查看并使用 `/retrydlq` 一键重试。
+### 4. ⚡️ **高可用与健壮架构 (Reliability & Performance)**
+- **单实例文件锁**：防止多进程并发启动抢占 Telegram 轮询冲突。
+- **防回环出站过滤**：出站消息统一指纹记录，彻底杜绝 Bot 自身消息回环扩散。
+- **死信队列 (DLQ)**：因网络抖动、频控或权限失效失败的任务自动沉降至 DLQ，支持 `/dlq` 查看、`/retrydlq` 重试或 `/repair` 修复。
+- **WAL 模式 SQLite**：全异步 `aiosqlite` 操作，兼具轻量化与高并发读写性能。
 
 ---
 
-## 🛠 快速开始 (Deployment)
+## 🚀 快速开始 (Quick Start)
 
-### 1. 一键安装并运行 (推荐)
-适用于 Ubuntu/Debian 服务器。该脚本将自动安装系统依赖（Python, Git 等）、配置环境、并可选安装为 Systemd 服务实现开机自启。
-```bash
-curl -sSL https://raw.githubusercontent.com/JaikChen/telegram-media-bot/master/install.sh | bash
+### 环境要求
+- **Python 3.10+** (推荐 3.11 / 3.12 / 3.14)
+- **Windows / Linux / macOS**
+
+### 1. 配置环境变量
+在项目根目录下创建 `.env` 文件（可参考配置如下）：
+```env
+BOT_TOKEN=8224286324:AAGyNgFIbMCE2Vb_VWneeFgmQXYIvxkUkJY
+ADMIN_ID=7975947295
+DATABASE_PATH=data/bot.db
+PROXY_URL=socks5://127.0.0.1:7891
+LOG_LEVEL=INFO
 ```
 
-### 2. 日常维护 (Maintenance)
-项目脚本已统一整理至 `scripts/` 目录：
-* **更新并重启**: `bash scripts/deploy.sh` (同步 GitHub 代码、更新依赖并平滑重启)
-* **彻底重装**: `bash scripts/reinstall.sh` (保留 `.env` 配置，清空其余数据并重新拉取代码)
-
-### 3. Docker 部署
-```bash
-docker-compose up -d --build
-```
+### 2. 启动与管理脚本 (Windows 一键批处理)
+- **环境初始化**：双击运行 `setup_env.bat`（自动创建虚拟环境并安装依赖包）。
+- **运行机器人**：双击运行 `start_bot.bat`（自动检查环境并启动 Bot）。
+- **运行单元测试**：双击运行 `run_tests.bat`（运行 pytest 全量测试集）。
 
 ---
 
-## 📖 详细文档
-* [使用手册 (Manual)](docs/manual.md) - 包含转发配置、清洗规则说明及完整指令表。
-* [开发者指南 (Developer)](GEMINI.md) - 架构设计与开发规范。
+## 📜 完整指令手册 (Command Reference)
 
+### 1. 🔁 转发管理
+| 指令 | 说明 | 示例 |
+| :--- | :--- | :--- |
+| `/addforward <源ID> <目标ID>` | 建立频道/群组转发映射 | `/addforward -100111 -100222` |
+| `/delforward <源ID> <目标ID>` | 解除转发映射 | `/delforward -100111 -100222` |
+| `/listforward <源ID>` | 查看指定源频道的转发链路 | `/listforward -100111` |
+| `/listall` | 一键查询当前配置的所有转发链 | `/listall` |
 
 ---
 
-## 📖 扩展命令手册 (Admin Commands)
+### 2. 🧩 规则与内容过滤 (`/addrule`, `/setrules`)
+支持为指定频道设置规则，或使用 `all` 参数批量配置所有频道。
 
-| 指令 | 描述 |
+| 规则参数 | 作用说明 |
 | :--- | :--- |
-| `/queue` | 📊 查看积压转发队列状态 (实时监控) |
-| `/listall` | 📋 一键查询所有已配置的转发链 |
-| `/dlq` | 查看死信队列中最近失败的任务 |
-| `/retrydlq {id\|all}` | 从死信队列恢复并重试任务 |
-| `/cleardlq` | 清空死信队列 |
-| `/setdelay min max` | 设置转发任务的随机延迟范围 |
-| `/repair` | 手动唤醒可能卡死的转发工人 |
-| `/setvoting on/off` | 为当前频道开启/关闭 👍👎 投票按钮 |
+| `strip_ad_lines` | **整行广告清除**：凡含链接、@提及、引流句式或关键词的行整行删除 |
+| `clean_keywords` | **温和屏蔽**：仅删除包含关键词的行 |
+| `block_keywords` | **严格屏蔽**：只要发现关键词则直接删除整条文案 |
+| `clean_links` | **智能删链**：去除链接但保留正常说明文字 |
+| `strip_all_if_links` | **严格删链**：只要发现链接则整条文案清空 |
+| `remove_at_prefix` | 去除 `@` 账号与群组引用 |
+| `pangu` | 中英文排版美化（在中英文之间自动补齐空格） |
+| `keep_all` | 保留所有文案不作过滤 |
+| `maxlen:N` | 限制文案最大字符长度（如 `maxlen:100`） |
 
+**规则配置指令：**
+- `/addrule <频道ID|all> <规则>`：添加规则（如 `/addrule all strip_ad_lines`）
+- `/delrule <频道ID|all> <规则>`：删除单条规则
+- `/setrules <频道ID|all> <规则1> <规则2>`：覆盖重置规则
+- `/clearrules <频道ID|all>`：清空规则
+- `/listrules <频道ID>`：查看当前规则
 
 ---
 
-## 📂 模块化结构
+### 3. 🛠 关键词、替换与页脚
+- `/addkw <频道ID|all> 词1 词2 ...`：添加屏蔽关键词（末尾加 `regex` 可启用正则）
+- `/delkw <频道ID|all> 词`：删除指定屏蔽词
+- `/listkw <频道ID>`：查看关键词列表
+- `/addreplace <频道ID|all> <旧内容> <新内容>`：添加文案替换规则
+- `/delreplace <频道ID|all> <旧内容>`：删除文案替换规则
+- `/setfooter <频道ID|all> <内容>`：设置消息底部固定页脚
+- `/delfooter <频道ID|all>`：删除消息页脚
 
-* `db.py`: 数据库单例，包含读写锁逻辑与业务查询。
-* `cleaner.py`: 核心净化引擎，包含 ReDoS 防御与标签回填。
-* `handlers/media.py`: 媒体处理器，包含 **Debounce (防抖) 相册收集** 逻辑。
-* `handlers/extras.py`: 包含编辑同步、周报生成、防刷屏等扩展逻辑。
-* `locales.py`: 国际化与提示语模板。
+---
 
-📄 **License**: MIT. 基于纯本地化理念开发，不依赖任何第三方 AI 接口。
+### 4. ⚙️ 系统运维与队列管理 (Super Admin)
+- `/queue`：查看当前待转发队列各频道积压统计
+- `/clearqueue [all|频道ID]`：**一键清空待转发积压队列**
+- `/dlq`：查看发送失败的任务死信队列
+- `/cleardlq`：清空死信队列
+- `/retrydlq [ID|all]`：重新投递死信队列任务
+- `/repair`：重置并修复卡顿的队列状态
+- `/pause`：暂停转发工人（积压保留）
+- `/resume`：恢复转发工人
+- `/setdelay <min> <max>`：设置转发随机延迟秒数（如 `/setdelay 10 60`）
+- `/stats`：查看各频道累计处理统计
+- `/addadmin <用户ID>` / `/deladmin <用户ID>` / `/listadmins`：管理动态管理员
+
+---
+
+## 🧪 自动化测试 (Testing)
+
+项目采用 `pytest` + `pytest-asyncio` 进行全模块单元测试：
+```bash
+# 激活环境并运行全量测试
+pytest -v
+```
+测试覆盖：
+- 规则清洗引擎与整行广告检测 (`test_cleaner.py`)
+- 队列清空与重试机制 (`test_clear_queue.py`)
+- 全局去重与相册聚合防回环 (`test_dedup_and_album.py`)
+- 延迟调度与速率控制 (`test_pacing.py`)
+- 频道人工转发去源、私聊去源与级联分发 (`test_refactored_system.py`)
+
+---
+
+## 📄 License
+MIT License

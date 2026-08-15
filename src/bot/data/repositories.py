@@ -14,15 +14,61 @@ class MediaRepository:
     """Handles all persistence logic for media, deduplication, and queues."""
 
     @staticmethod
+    async def record_outbound_message(chat_id: str, message_id: str):
+        """Records an outbound message sent by the bot to detect and ignore echoes."""
+        sql = "INSERT OR REPLACE INTO outbound_messages (chat_id, message_id, created_at) VALUES (?, ?, ?)"
+        await execute_sql(sql, (str(chat_id), str(message_id), int(time.time())), commit=True)
+
+    @staticmethod
+    async def is_outbound_message(chat_id: str, message_id: str) -> bool:
+        """Returns True if the message was sent by the bot itself."""
+        sql = "SELECT 1 FROM outbound_messages WHERE chat_id = ? AND message_id = ? LIMIT 1"
+        row = await execute_sql(sql, (str(chat_id), str(message_id)), fetchone=True)
+        if row:
+            return True
+        sql_fw = "SELECT 1 FROM forward_log WHERE target_chat_id = ? AND target_msg_id = ? LIMIT 1"
+        row_fw = await execute_sql(sql_fw, (str(chat_id), str(message_id)), fetchone=True)
+        return row_fw is not None
+
+    @staticmethod
+    async def is_processed_inbound(chat_id: str, message_id: str, file_unique_id: Optional[str] = None) -> bool:
+        """Checks if a message or media has already been processed for this chat."""
+        sql_msg = "SELECT 1 FROM processed_messages WHERE chat_id = ? AND message_id = ? LIMIT 1"
+        if await execute_sql(sql_msg, (str(chat_id), str(message_id)), fetchone=True):
+            return True
+        if file_unique_id:
+            sql_fuid = "SELECT 1 FROM processed_messages WHERE chat_id = ? AND file_unique_id = ? LIMIT 1"
+            if await execute_sql(sql_fuid, (str(chat_id), str(file_unique_id)), fetchone=True):
+                return True
+        return False
+
+    @staticmethod
+    async def mark_processed_inbound(
+        chat_id: str, message_id: str, file_unique_id: Optional[str] = None, media_group_id: Optional[str] = None
+    ) -> bool:
+        """Atomically marks a message as processed. Returns True if inserted, False if already exists."""
+        sql = """INSERT OR IGNORE INTO processed_messages 
+                 (chat_id, message_id, file_unique_id, media_group_id, created_at) 
+                 VALUES (?, ?, ?, ?, ?)"""
+        count = await execute_sql(
+            sql, (str(chat_id), str(message_id), file_unique_id, media_group_id, int(time.time())), commit=True
+        )
+        return count > 0
+
+    @staticmethod
     async def add_seen_atomic(chat_id: str, file_unique_id: str) -> bool:
-        sql = "INSERT OR IGNORE INTO seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)"
-        count = await execute_sql(sql, (chat_id, file_unique_id, int(time.time())), commit=True)
+        sql = "INSERT OR IGNORE INTO media_dedup_log (target_chat_id, file_unique_id, created_at) VALUES (?, ?, ?)"
+        count = await execute_sql(sql, (str(chat_id), file_unique_id, int(time.time())), commit=True)
+        await execute_sql("INSERT OR IGNORE INTO seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
+                          (str(chat_id), file_unique_id, int(time.time())), commit=True)
         return count > 0
 
     @staticmethod
     async def add_forward_seen_atomic(chat_id: str, file_unique_id: str) -> bool:
-        sql = "INSERT OR IGNORE INTO forward_seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)"
-        count = await execute_sql(sql, (chat_id, file_unique_id, int(time.time())), commit=True)
+        sql = "INSERT OR IGNORE INTO media_dedup_log (target_chat_id, file_unique_id, created_at) VALUES (?, ?, ?)"
+        count = await execute_sql(sql, (str(chat_id), file_unique_id, int(time.time())), commit=True)
+        await execute_sql("INSERT OR IGNORE INTO forward_seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
+                          (str(chat_id), file_unique_id, int(time.time())), commit=True)
         return count > 0
 
     @staticmethod
@@ -30,38 +76,33 @@ class MediaRepository:
         async with db_manager._write_lock:
             db = await db_manager.get_db()
             try:
-                # Check if already forwarded or seen in the target chat (Global Deduplication)
-                sql_check = """
-                            SELECT 1 \
-                            FROM seen \
-                            WHERE chat_id = ? \
-                              AND file_unique_id = ?
-                            UNION
-                            SELECT 1 \
-                            FROM forward_seen \
-                            WHERE chat_id = ? \
-                              AND file_unique_id = ? LIMIT 1 \
-                            """
-                async with db.execute(
-                        sql_check, (target_chat_id, item["fuid"], target_chat_id, item["fuid"])
-                ) as cursor:
-                    if await cursor.fetchone():
-                        logger.info(f"♻️ [Deduplicated] Media {item['fuid']} already exists in target {target_chat_id}")
-                        return False
-
                 now = int(time.time())
+                # 1. Atomic pre-reservation in media_dedup_log
+                cursor = await db.execute(
+                    "INSERT OR IGNORE INTO media_dedup_log (target_chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
+                    (str(target_chat_id), item["fuid"], now),
+                )
+                if cursor.rowcount == 0:
+                    logger.info(f"♻️ [Deduplicated] Media {item['fuid']} already exists in target {target_chat_id}")
+                    return False
+
+                # Maintain legacy tables for compatibility
                 await db.execute(
-                    "INSERT INTO forward_seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
-                    (target_chat_id, item["fuid"], now),
+                    "INSERT OR IGNORE INTO forward_seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
+                    (str(target_chat_id), item["fuid"], now),
+                )
+                await db.execute(
+                    "INSERT OR IGNORE INTO seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
+                    (str(target_chat_id), item["fuid"], now),
                 )
 
                 sql_q = """INSERT INTO forward_queue
                            (target_chat_id, media_type, file_id, caption, has_spoiler,
                             file_unique_id, media_group_id, created_at, priority,
-                            source_chat_id, source_msg_id) \
+                            source_chat_id, source_msg_id) 
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
                 args_q = (
-                    target_chat_id,
+                    str(target_chat_id),
                     item["mt"],
                     item["fid"],
                     item.get("cap"),
@@ -74,57 +115,53 @@ class MediaRepository:
                     item.get("smid"),
                 )
                 await db.execute(sql_q, args_q)
-
                 await db.commit()
                 return True
             except Exception as e:
                 await db.rollback()
-                logger.error(f"❌ Transaction Error (Single): {e}")
+                logger.error(f"❌ Transaction Error (Single Enqueue): {e}")
                 raise
 
     @staticmethod
     async def add_forward_seen_and_enqueue_album(target_chat_id: str, items: List[dict], delay_offset: int = 0) -> bool:
         if not items:
-            return True
+            return False
         async with db_manager._write_lock:
             db = await db_manager.get_db()
             try:
-                # 修复: 校验相册内的所有元素，防止打乱顺序后绕过校验
-                for it in items:
-                    sql_check = """
-                                SELECT 1 \
-                                FROM seen \
-                                WHERE chat_id = ? \
-                                  AND file_unique_id = ?
-                                UNION
-                                SELECT 1 \
-                                FROM forward_seen \
-                                WHERE chat_id = ? \
-                                  AND file_unique_id = ? LIMIT 1 \
-                                """
-                    async with db.execute(
-                            sql_check, (target_chat_id, it["fuid"], target_chat_id, it["fuid"])
-                    ) as cursor:
-                        if await cursor.fetchone():
-                            logger.info(
-                                f"♻️ [Deduplicated Album] Media {it['fuid']} already exists in target {target_chat_id}"
-                            )
-                            return False
-
                 now = int(time.time())
+                valid_items = []
                 for it in items:
-                    await db.execute(
-                        "INSERT INTO forward_seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
-                        (target_chat_id, it["fuid"], now),
+                    cursor = await db.execute(
+                        "INSERT OR IGNORE INTO media_dedup_log (target_chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
+                        (str(target_chat_id), it["fuid"], now),
                     )
+                    if cursor.rowcount > 0:
+                        valid_items.append(it)
+                        await db.execute(
+                            "INSERT OR IGNORE INTO forward_seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
+                            (str(target_chat_id), it["fuid"], now),
+                        )
+                        await db.execute(
+                            "INSERT OR IGNORE INTO seen (chat_id, file_unique_id, created_at) VALUES (?, ?, ?)",
+                            (str(target_chat_id), it["fuid"], now),
+                        )
+                    else:
+                        logger.info(
+                            f"♻️ [Deduplicated Album Item] Media {it['fuid']} already exists in target {target_chat_id}"
+                        )
 
+                if not valid_items:
+                    return False
+
+                for it in valid_items:
                     sql_q = """INSERT INTO forward_queue
                                (target_chat_id, media_type, file_id, caption, has_spoiler,
                                 file_unique_id, media_group_id, created_at, priority,
-                                source_chat_id, source_msg_id) \
+                                source_chat_id, source_msg_id) 
                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
                     args_q = (
-                        target_chat_id,
+                        str(target_chat_id),
                         it["mt"],
                         it["fid"],
                         it.get("cap"),
@@ -142,7 +179,7 @@ class MediaRepository:
                 return True
             except Exception as e:
                 await db.rollback()
-                logger.error(f"❌ Transaction Error (Album): {e}")
+                logger.error(f"❌ Transaction Error (Album Enqueue): {e}")
                 raise
 
     @staticmethod
@@ -246,6 +283,33 @@ class MediaRepository:
             return
         placeholders = ",".join(["?"] * len(ids))
         await execute_sql(f"DELETE FROM forward_queue WHERE id IN ({placeholders})", tuple(ids), commit=True)
+
+    @staticmethod
+    async def clear_forward_queue(target_chat_id: str | None = None) -> int:
+        """
+        Clears pending tasks from forward_queue.
+        If target_chat_id is specified (and not 'all'), clears only that chat's queue.
+        Returns the number of removed tasks.
+        """
+        if target_chat_id and str(target_chat_id).lower() != "all":
+            row = await execute_sql(
+                "SELECT COUNT(*) FROM forward_queue WHERE target_chat_id=?",
+                (str(target_chat_id),),
+                fetchone=True,
+            )
+            count = row[0] if row else 0
+            await execute_sql(
+                "DELETE FROM forward_queue WHERE target_chat_id=?",
+                (str(target_chat_id),),
+                commit=True,
+            )
+            return count
+        else:
+            row = await execute_sql("SELECT COUNT(*) FROM forward_queue", fetchone=True)
+            count = row[0] if row else 0
+            await execute_sql("DELETE FROM forward_queue", commit=True)
+            return count
+
 
     @staticmethod
     async def reset_processing_status(ids: List[int]):

@@ -31,10 +31,12 @@ ENV/
 *.swp
 *.swo
 
-# Database
+# Database & Runtime Data
 *.db
 *.db-shm
 *.db-wal
+data/
+*.lock
 
 # Logs
 logs/

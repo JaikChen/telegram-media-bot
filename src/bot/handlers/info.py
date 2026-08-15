@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from src.bot.data.repositories import MediaRepository, ChatRepository, VoteRepository, execute_sql
-from src.bot.utils.helpers import admin_only, is_global_admin, escape_markdown, check_chat_permission
+from src.bot.utils.helpers import admin_only, is_global_admin, is_admin, escape_markdown, check_chat_permission
 from src.bot.core.locales import get_text
 
 logger = logging.getLogger(__name__)
@@ -151,22 +151,24 @@ async def handle_queue_status(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.error(f"Error in handle_queue_status: {e}")
 
 
-@admin_only
 async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display the help manual with available commands and descriptions."""
     if not update.message:
         return
 
     try:
-        is_global = is_global_admin(update.message.from_user.id)
-        role = "固定管理员 (Super Admin)" if is_global else "频道管理员 (Chat Admin)"
+        uid = update.message.from_user.id if update.message.from_user else 0
+        is_global = is_global_admin(uid)
+        is_dynamic = await is_admin(update)
+        role = "固定管理员 (Super Admin)" if is_global else ("管理员 (Admin)" if is_dynamic else "普通用户 (User)")
         target_hint = " -100频道ID"
         min_s, max_s = await MediaRepository.get_delay_settings()
         delay_status = f"{min_s}~{max_s}秒" if max_s > 0 else "关闭(实时)"
 
         help_text = f"""
-🤖 *Jaikcl_Bot 全能手册*
-👤 身份：`{role}`
+🤖 *Telegram Media Bot*
+👤 你的 Telegram ID：`{uid}`
+🎖 身份权限：`{role}`
 ⏱ 全局延迟：`{delay_status}`
 
 💡 *使用小贴士*：
@@ -184,7 +186,8 @@ _(支持 `all` 批量操作)_
 `/listrules`{target_hint} — 📜 查看规则
 
 *📝 常用规则参数*：
-`clean_keywords`: **温和屏蔽** (仅删含广告的行)
+`strip_ad_lines`: **整行广告清除** (删含链接、@号、关键词的整行描述)
+`clean_keywords`: **温和屏蔽** (仅删含关键词的行)
 `block_keywords`: **严格屏蔽** (发现关键词删整条)
 `clean_links`: **智能删链** (去链接但保留文字)
 `strip_all_if_links`: **严格删链** (有链接则删整条)
@@ -235,6 +238,11 @@ _(支持 `all` 批量操作)_
             help_text += f"""⚙️ *系统管理 (Super Admin)*
 `/pause` — ⏸ **暂停转发** (积压保留)
 `/resume` — ▶️ **恢复转发** (处理积压)
+`/clearqueue` `[all/-100ID]` — 🗑 **一键清空待转发队列**
+`/dlq` — 💀 **查看死信队列** (失败任务)
+`/cleardlq` — 🗑 **清空死信队列**
+`/retrydlq [ID/all]` — 🔄 **重试死信任务**
+`/repair` — 🛠 **重置并修复卡顿队列**
 `/setdelay min max` — ⏱ **设置延迟(秒)**
 `/setlog`{target_hint} — 📝 设置日志频道
 `/setlogfilter` — ⚖️ 过滤日志
@@ -246,7 +254,7 @@ _(支持 `all` 批量操作)_
 `/listadmins` — 👑 管理员列表
 `/backupdb` — 📦 备份数据库
 `/restoredb` — 📥 恢复数据库
-`/dlq` — 💀 查看死信队列
+
 """
         await update.message.reply_text(help_text.strip(), parse_mode="Markdown")
     except Exception as e:

@@ -482,3 +482,29 @@ async def handle_repair_queue(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logger.error(f"Error in handle_repair_queue: {e}")
         await update.message.reply_text(f"❌ 修复失败: {e}")
+
+
+@admin_only
+async def handle_clear_queue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Clear tasks from the forward queue (all or specific chat)."""
+    if not update.message or not is_global_admin(update.message.from_user.id):
+        await update.message.reply_text(get_text("no_permission"))
+        return
+
+    try:
+        target_chat = context.args[0] if context.args else "all"
+        deleted_count = await MediaRepository.clear_forward_queue(target_chat)
+        if target_chat.lower() == "all":
+            await update.message.reply_text(f"🗑 转发队列已全部清空（共清除 {deleted_count} 条待转发任务）。")
+        else:
+            await update.message.reply_text(f"🗑 目标频道 `{target_chat}` 的转发队列已清空（共清除 {deleted_count} 条任务）。", parse_mode="Markdown")
+        logger.info(f"Forward queue cleared by {update.effective_user.id} (target: {target_chat}, count: {deleted_count})")
+        await log_event(
+            context.bot,
+            f"管理员 {update.effective_user.id} 清空了转发队列 ({target_chat}, 清除 {deleted_count} 条)",
+            category="system",
+        )
+    except Exception as e:
+        logger.error(f"Error in handle_clear_queue: {e}")
+        await update.message.reply_text(f"❌ 清空队列失败: {e}")
+

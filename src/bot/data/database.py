@@ -29,6 +29,7 @@ class DatabaseManager:
                 self._conn = await aiosqlite.connect(str(db_path))
                 await self._conn.execute("PRAGMA journal_mode=WAL;")
                 await self._conn.execute("PRAGMA synchronous=NORMAL;")
+                await self._conn.execute("PRAGMA busy_timeout=30000;")
                 await self._conn.commit()
                 logger.info(f"🔌 Database connected: {db_path.name} (WAL Mode)")
 
@@ -36,6 +37,7 @@ class DatabaseManager:
                 await self.init_db()
             except Exception as e:
                 logger.error(f"❌ DB Init Error: {e}")
+                self._conn = None
                 raise
         return self._conn
 
@@ -52,6 +54,12 @@ class DatabaseManager:
                 user_id TEXT PRIMARY KEY
             )""",
             # Deduplication Tables
+            """CREATE TABLE IF NOT EXISTS media_dedup_log (
+                target_chat_id TEXT,
+                file_unique_id TEXT,
+                created_at INTEGER,
+                PRIMARY KEY (target_chat_id, file_unique_id)
+            )""",
             """CREATE TABLE IF NOT EXISTS seen (
                 chat_id TEXT, 
                 file_unique_id TEXT, 
@@ -185,11 +193,29 @@ class DatabaseManager:
                 key TEXT PRIMARY KEY,
                 value TEXT
             )""",
+            # Outbound and Inbound Tracking
+            """CREATE TABLE IF NOT EXISTS outbound_messages (
+                chat_id TEXT,
+                message_id TEXT,
+                created_at INTEGER,
+                PRIMARY KEY (chat_id, message_id)
+            )""",
+            """CREATE TABLE IF NOT EXISTS processed_messages (
+                chat_id TEXT,
+                message_id TEXT,
+                file_unique_id TEXT,
+                media_group_id TEXT,
+                created_at INTEGER,
+                PRIMARY KEY (chat_id, message_id)
+            )""",
             # Indexes
             "CREATE INDEX IF NOT EXISTS idx_seen_chat ON seen(chat_id)",
+            "CREATE INDEX IF NOT EXISTS idx_dedup_log ON media_dedup_log(target_chat_id, file_unique_id)",
             "CREATE INDEX IF NOT EXISTS idx_fqueue_status ON forward_queue(status, updated_at)",
             "CREATE INDEX IF NOT EXISTS idx_fqueue_priority ON forward_queue(priority DESC, id ASC)",
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_fqueue_dedup ON forward_queue(target_chat_id, file_unique_id, IFNULL(media_group_id, ''))",
+            "CREATE INDEX IF NOT EXISTS idx_proc_fuid ON processed_messages(chat_id, file_unique_id)",
+            "CREATE INDEX IF NOT EXISTS idx_outbound_msg ON outbound_messages(chat_id, message_id)",
         ]
 
         db = await self.get_db()
@@ -203,7 +229,6 @@ class DatabaseManager:
                 logger.warning(f"⚠️ Schema migration notice: {e}")
 
         # Incremental Migration: Add created_at if missing
-        # This is a simple way to add columns to existing tables without complex migration frameworks
         tables_to_patch = [("forward_seen", "created_at", "INTEGER"), ("forward_log", "created_at", "INTEGER")]
         for table, col, col_type in tables_to_patch:
             try:
@@ -211,6 +236,13 @@ class DatabaseManager:
                 logger.info(f"✨ Patched table {table} with column {col}")
             except Exception:
                 pass  # Column already exists
+
+        # Migration: populate media_dedup_log from legacy forward_seen and seen
+        try:
+            await db.execute("INSERT OR IGNORE INTO media_dedup_log (target_chat_id, file_unique_id, created_at) SELECT chat_id, file_unique_id, created_at FROM forward_seen WHERE file_unique_id IS NOT NULL")
+            await db.execute("INSERT OR IGNORE INTO media_dedup_log (target_chat_id, file_unique_id, created_at) SELECT chat_id, file_unique_id, created_at FROM seen WHERE file_unique_id IS NOT NULL")
+        except Exception as mig_err:
+            logger.debug(f"Dedup log migration notice: {mig_err}")
 
         await db.commit()
         logger.info("🛠 Database schema verified/initialized.")
@@ -234,20 +266,24 @@ class DatabaseManager:
     ) -> Any:
         sql_u = sql.strip().upper()
         is_write = any(
-            sql_u.startswith(k) for k in ["INSERT", "UPDATE", "DELETE", "REPLACE", "CREATE", "DROP", "ALTER", "VACUUM"]
+            k in sql_u for k in ["INSERT", "UPDATE", "DELETE", "REPLACE", "CREATE", "DROP", "ALTER", "VACUUM"]
         )
         lock = self._write_lock if (is_write or commit) else contextlib.nullcontext()
         async with lock:
             db = await self.get_db()
             try:
                 async with db.execute(sql, args) as cursor:
+                    if fetchone:
+                        res = await cursor.fetchone()
+                    elif fetchall:
+                        res = await cursor.fetchall()
+                    else:
+                        res = cursor.rowcount
+
                     if commit or is_write:
                         await db.commit()
-                    if fetchone:
-                        return await cursor.fetchone()
-                    if fetchall:
-                        return await cursor.fetchall()
-                    return cursor.rowcount
+
+                    return res
             except Exception as e:
                 logger.error(f"❌ SQL Error: {sql} | {e}")
                 if commit or is_write:
