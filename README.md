@@ -66,6 +66,39 @@ LOG_LEVEL=INFO
   python src/main.py --env .env.custom
   ```
 
+### 4. Linux 综合管理脚本 (`bot.sh`)
+为 Linux 服务器环境提供了工业级运维脚本 [`bot.sh`](file:///c:/AI/telegram-media-bot/bot.sh)，支持交互式菜单与命令行直接调用：
+
+#### 快捷交互式终端：
+```bash
+chmod +x bot.sh
+./bot.sh
+```
+运行后将进入彩色管理菜单，可直观选择：启动/停止/重启全部或指定 Bot、状态监控、查看日志、配置 Bot 1/Bot 2、从 GitHub 一键更新、一键安装 Systemd 开机自启服务等。
+
+#### 命令行直接操作：
+```bash
+# 启动
+./bot.sh start          # 启动全部 Bot
+./bot.sh start bot1     # 仅启动 Bot 1
+./bot.sh start bot2     # 仅启动 Bot 2
+
+# 重启与停止
+./bot.sh restart        # 重启全部
+./bot.sh restart bot2   # 重启 Bot 2
+./bot.sh stop           # 停止全部
+
+# 状态与日志
+./bot.sh status         # 查看运行状态 (PID、内存占用、数据库大小)
+./bot.sh logs bot1      # 实时查看 Bot 1 日志
+./bot.sh logs bot2      # 实时查看 Bot 2 日志
+
+# 配置与更新
+./bot.sh add bot2       # 向导式配置 Bot 2 (.env.bot2)
+./bot.sh update         # 从 GitHub 拉取最新代码并平滑重启
+./bot.sh systemd        # 一键安装 Systemd 守护进程
+```
+
 ---
 
 ## 📜 完整指令手册 (Command Reference)
