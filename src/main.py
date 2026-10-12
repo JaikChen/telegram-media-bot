@@ -92,8 +92,10 @@ async def post_init(application: Application):
 
     application.job_queue.run_daily(send_weekly_report, time=time(12, 0, 0), days=(6,))
 
-    logger.info(f"🚀 Bot v{VERSION} initialized with Global Deduplication and Self-Cleaning.")
-    await log_event(application.bot, f"Bot started v{VERSION}\n{UPDATE_NOTES}", category="system")
+    import src.bot.core.config as config
+    inst_tag = f"[{config.INSTANCE_NAME}] " if config.INSTANCE_NAME else ""
+    logger.info(f"🚀 Bot {inst_tag}v{VERSION} initialized with Global Deduplication and Self-Cleaning.")
+    await log_event(application.bot, f"Bot {inst_tag}started v{VERSION}\n{UPDATE_NOTES}", category="system")
 
 
 async def post_shutdown(application: Application):
@@ -116,6 +118,7 @@ class ProcessLock:
     def acquire(self) -> bool:
         import os
         try:
+            Path(self.lock_path).parent.mkdir(parents=True, exist_ok=True)
             if sys.platform == 'win32':
                 import msvcrt
                 # Open for read+write, create if missing – never truncate
@@ -201,16 +204,18 @@ def main():
     (BASE_DIR / "backups").mkdir(parents=True, exist_ok=True)
 
     # Process Lock to prevent duplicate instances
-    lock = ProcessLock(BASE_DIR / "data/bot.lock")
+    lock = ProcessLock(config.LOCK_FILE)
     if not lock.acquire():
-        print("Error: Another instance of the bot is already running. Exiting...")
+        inst_label = f" (instance '{config.INSTANCE_NAME}')" if config.INSTANCE_NAME else ""
+        print(f"Error: Another instance of the bot{inst_label} is already running. Exiting...")
         sys.exit(1)
 
     setup_logging()
     global logger
     logger = logging.getLogger(__name__)
     import os
-    logger.info(f"Process lock acquired by PID {os.getpid()}.")
+    inst_info = f" [Instance: {config.INSTANCE_NAME}]" if config.INSTANCE_NAME else ""
+    logger.info(f"Process lock acquired by PID {os.getpid()}{inst_info}.")
 
     from telegram.request import HTTPXRequest
     proxy_val = config.PROXY_URL if config.PROXY_URL else None

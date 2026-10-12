@@ -44,6 +44,9 @@ logs/
 
 # Environment variables
 .env
+.env.*
+!.env.example
+!.env.bot2.example
 
 # Project specific
 /GEMINI.md

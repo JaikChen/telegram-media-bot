@@ -51,8 +51,20 @@ LOG_LEVEL=INFO
 
 ### 2. 启动与管理脚本 (Windows 一键批处理)
 - **环境初始化**：双击运行 `setup_env.bat`（自动创建虚拟环境并安装依赖包）。
-- **运行机器人**：双击运行 `start_bot.bat`（自动检查环境并启动 Bot）。
+- **运行主机器人 (Bot 1)**：双击运行 `start_bot.bat`（加载 `.env`，数据存入 `data/bot.db`）。
+- **运行第二个机器人 (Bot 2)**：双击运行 `start_bot2.bat`（加载 `.env.bot2`，数据隔离存入 `data/bot_bot2.db`）。
 - **运行单元测试**：双击运行 `run_tests.bat`（运行 pytest 全量测试集）。
+
+### 3. 多 Bot 独立运行 (Multi-Instance)
+本项目支持在同一目录下同时启动多个独立的 Bot，配置与数据库自动完全隔离：
+- **Bot 1**：使用默认配置文件 `.env`，锁文件 `data/bot.lock`，数据库 `data/bot.db`，日志 `logs/bot.log`。
+- **Bot 2**：使用配置文件 `.env.bot2`（首次运行会自动从模板创建），锁文件 `data/bot_bot2.lock`，数据库 `data/bot_bot2.db`，日志 `logs/bot_bot2.log`。
+- **自定义实例名**：也可以在终端指定任何实例名：
+  ```bash
+  python src/main.py --instance mybot
+  # 或使用指定环境文件
+  python src/main.py --env .env.custom
+  ```
 
 ---
 

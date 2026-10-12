@@ -44,7 +44,13 @@ class MediaService:
 
         # 2. Inbound deduplication check
         if await MediaRepository.is_processed_inbound(cid, smid, fuid):
-            return False
+            is_forwarded = is_forwarded_message(msg)
+            is_group = (msg.chat.type in ["group", "supergroup"])
+            is_channel = (msg.chat.type == "channel")
+            # If a duplicate forwarded message is sent into a channel/group, delete it to keep channel clean
+            logger.info(f"♻️ Inbound duplicate detected for {fuid} in {cid}. Deleting forwarded original: {is_forwarded}")
+            return is_forwarded and (is_channel or is_group)
+
         if not await MediaRepository.mark_processed_inbound(cid, smid, fuid):
             return False
 
@@ -140,7 +146,11 @@ class MediaService:
                     valid_msgs.append(m)
 
         if not valid_msgs:
-            return False
+            is_forwarded = any(is_forwarded_message(m) for m in msgs)
+            is_group = (msgs[0].chat.type in ["group", "supergroup"])
+            is_channel = (msgs[0].chat.type == "channel")
+            logger.info(f"♻️ Inbound duplicate album detected for group {gid} in {cid}. Deleting original: {is_forwarded}")
+            return is_forwarded and (is_channel or is_group)
 
         cap_msg = next((m for m in valid_msgs if m.caption), valid_msgs[0])
         cap = cap_msg.caption or ""

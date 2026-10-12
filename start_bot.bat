@@ -9,6 +9,6 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 echo [*] Starting Telegram Media Bot...
-".venv\Scripts\python.exe" src/main.py
+".venv\Scripts\python.exe" src/main.py %*
 pause
 

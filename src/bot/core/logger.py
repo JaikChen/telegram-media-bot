@@ -40,9 +40,11 @@ def setup_logging():
     logger.addHandler(console_handler)
 
     # Ensure log directory exists
-    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+    import src.bot.core.config as config
+    log_path = config.LOG_FILE
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
 
-    file_handler = TimedRotatingFileHandler(LOG_FILE, when="midnight", interval=1, backupCount=30, encoding="utf-8")
+    file_handler = TimedRotatingFileHandler(log_path, when="midnight", interval=1, backupCount=30, encoding="utf-8")
     file_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s")
     file_handler.setFormatter(file_format)
     logger.addHandler(file_handler)
